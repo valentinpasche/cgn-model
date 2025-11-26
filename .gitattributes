@@ -1,0 +1,18 @@
+* text=auto
+
+# Normaliser les fins de lignes des fichiers texte
+*.py  text eol=lf
+*.txt text eol=lf
+*.md  text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+
+# Binaires : ne pas essayer de les merger
+*.pdf  binary
+*.xlsx binary
+*.docx binary
+*.zip  binary
+*.png  binary
+*.jpg  binary
