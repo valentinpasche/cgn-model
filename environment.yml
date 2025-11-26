@@ -36,8 +36,8 @@ dependencies:
   - spyder
   - spyder-kernels
 
-  # # --- Editable install of the package from this folder ---
-  # - pip
-  # - pip:
-  #   - -e . # va chercher le "pyproject.toml" à la racine
+  # --- Editable install of the package from this folder ---
+  - pip
+  - pip:
+    - -e . # va chercher le "pyproject.toml" à la racine
 
