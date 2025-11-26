@@ -47,3 +47,61 @@ class Vessel:
         vessel.setdefault("name", "unknown")
         vessel.setdefault("type", "undefined")
         return {"name": vessel.get("name"), "type": vessel.get("type")}
+
+
+
+# Test config - Creation Vessel avec SolverDAG
+if __name__ == "__main__":
+    
+    # Config
+    cfg_txt = """
+    vessel:
+      name: "Vevey"
+      type: "DE"
+      
+    profil_vitesse:
+        coefs:
+          [0.2, 0.3, -2, ..]
+    
+    solver:
+      mode: "inverse"
+    
+    buses:
+      - {id: "Mechanical:shaft", carrier: "Mechanical"}
+      - {id: "Electrical:main",  carrier: "Electrical"}
+      - {id: "Chemical:fuel",    carrier: "Chemical"}
+    
+    inputs:
+      - {id: "shaft_demand", bus: "Mechanical:shaft"}
+      - {id: "navops",       bus: "Electrical:main"}
+    
+    converters:
+      - id: "genset"
+        from_bus: "Chemical:fuel"
+        to_bus:   "Electrical:main"
+        kind: "constant_eta"
+        params:
+          eta:  0.38 
+      - id: "motor"
+        from_bus: "Electrical:main"
+        to_bus:   "Mechanical:shaft"
+        eta:  0.9    # Fallback sur "constant_eta" si "kind" non renseigé et "eta" présent au top-level
+    """
+    
+    cfg = yaml.safe_load(cfg_txt)
+    solver = SolverDAG.from_yaml(cfg)
+    vessel = Vessel.from_yaml(cfg)
+    
+    def validation_init_solver(vessel, solver):
+        dct_vessel_solver = vars(vessel.solver)
+        dct_solver = vars(solver)
+        # Les ID des Graphs ne sont pas identiques
+        del dct_vessel_solver["dag"]
+        del dct_solver["dag"]
+        return dct_vessel_solver == dct_solver
+    
+    if validation_init_solver(vessel, solver):
+        print("OK : Les 2 solveurs sont identiques !")
+    else:
+        print("ATTENTION : Les 2 solveurs sont différents !")
+        
