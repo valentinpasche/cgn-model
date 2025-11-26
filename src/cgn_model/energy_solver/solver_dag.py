@@ -1,4 +1,5 @@
-# energy_solver/solver_dag.py
+# cgn_model/energy_solver/solver_dag.py
+
 """
 SolverDAG — préparation d'une simulation énergétique basée sur un DAG.
 
@@ -36,9 +37,9 @@ import copy
 import yaml
 import networkx as nx
 
-from .types import FArray, Mode, Plan, Pos
-from .config import Cfg
-from .components import ConverterABC
+from cgn_model.energy_solver.types import FArray, Mode, Plan, Pos
+from cgn_model.energy_solver.config import Cfg
+from cgn_model.energy_solver.components import ConverterABC
 
 __all__ = ["SolverDAG"]
 

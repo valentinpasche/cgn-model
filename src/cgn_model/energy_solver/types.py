@@ -1,4 +1,4 @@
-# energy_solver/types.py
+# cgn_model/energy_solver/types.py
 
 from collections.abc import Mapping
 from typing import Literal

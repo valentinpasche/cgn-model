@@ -1,8 +1,9 @@
-# energy_solver/run_dag.py
+# cgn_model/energy_solver/run_dag.py
+
 from __future__ import annotations
 import numpy as np
 from typing import Mapping
-from energy_solver.solver_dag import SolverDAG
+from cgn_model.energy_solver import SolverDAG
 
 
 def _check_and_get_len(profiles: Mapping[str, np.ndarray]) -> int:

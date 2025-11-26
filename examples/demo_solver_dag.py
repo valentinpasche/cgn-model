@@ -5,7 +5,8 @@ import yaml
 import matplotlib.pyplot as plt
 
 from pint import UnitRegistry
-from energy_solver import SolverDAG, prepare_state, run_vector
+
+from cgn_model.energy_solver import SolverDAG, prepare_state, run_vector
 
 def plot_state(solver: SolverDAG, t) -> None:
     

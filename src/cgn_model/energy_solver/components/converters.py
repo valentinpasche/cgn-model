@@ -1,4 +1,5 @@
-# energy_solver/components/converters.py
+# cgn_model/energy_solver/components/converters.py
+
 """
 Registry des convertisseurs + contrat de base (ConverterABC).
 

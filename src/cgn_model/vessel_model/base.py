@@ -1,4 +1,4 @@
-# vessel_model/base.py
+# cgn_model/vessel_model/base.py
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ import copy, yaml
 from numpy.typing import NDArray
 import numpy as np
 
-from cgn_model import SolverDAG
+from cgn_model.energy_solver import SolverDAG
 
 type FArray = NDArray[np.floating]
 type SolverMode = Literal["forward", "inverse"]

@@ -1,8 +1,8 @@
-# energy_solver/config.py
+# cgn_model/energy_solver/config.py
 
 from typing import Any
 from pydantic import BaseModel, Field, StrictStr, ConfigDict, model_validator
-from .types import Mode
+from cgn_model.energy_solver.types import Mode
 
 __all__ = ["Cfg"]
 

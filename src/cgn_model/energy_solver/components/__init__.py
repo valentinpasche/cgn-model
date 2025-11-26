@@ -1,4 +1,4 @@
-# energy_solver/components/__init__.py
+# cgn_model/energy_solver/components/__init__.py
 
 """Components registry (converters, later maybe inputs/buses)."""
 

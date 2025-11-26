@@ -1,4 +1,4 @@
-# energy_solver/__init__.py
+# cgn_model/energy_solver/__init__.py
 
 """Energy Solver – DAG preparation and config validation."""
 
