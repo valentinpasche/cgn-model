@@ -1,0 +1,42 @@
+buses:
+  - id: "Mechanical:shaft"
+    carrier: "Mechanical"
+  - id: "Electrical:main"
+    carrier: "Electrical"
+  - id: "Chemical:fuel"
+    carrier: "Chemical"
+
+inputs:
+  # 1) Profil de vitesse -> P_shaft via table
+  - type: "speed_profile"
+    bus: "Mechanical:shaft"
+    # petite table v[m/s] -> P_shaft[W]
+    map_v_to_pshaft:
+      - [0.0,     0.0]
+      - [1.0,  30000.0]
+      - [2.0,  80000.0]
+      - [3.0, 150000.0]
+      - [4.0, 240000.0]
+      - [5.0, 360000.0]
+    # pour l’ébauche : vitesse constante ; tu peux fournir un vecteur "v_profile" à la place
+    v_const: 3.2
+
+  # 2) NavOps électrique simple (W) ; positif = demande
+  - type: "navops_profile"
+    bus: "Electrical:main"
+    p_const_W: 20000.0
+
+converters:
+  # Méca -> Élec (inverse) : couvre la demande méca à partir d’élec
+  - id: "motor_inv"
+    type: "motor_inverse"
+    from_bus: "Electrical:main"
+    to_bus:   "Mechanical:shaft"
+    eta: 0.85
+
+  # Élec -> Chim (inverse) : couvre la demande élec à partir du fuel
+  - id: "genset_inv"
+    type: "genset_inverse"
+    from_bus: "Chemical:fuel"
+    to_bus:   "Electrical:main"
+    eta: 0.45

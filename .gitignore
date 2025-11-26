@@ -1,0 +1,17 @@
+# --- Python & build basiques ---
+__pycache__/
+*.pyc
+# --- Fichiers ignorés ---
+*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# --- Données de tests : tout ignorer par défaut ---
+# /tests/private/*
+# !/tests/private/samples/**   # on commit seulement ce sous-dossier
+
+# --- (optionnel) Autoriser certains formats précis dans samples ---
+# !/tests/private/samples/**/*.docx
+# !/tests/private/samples/**/*.xml

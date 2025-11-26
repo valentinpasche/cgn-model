@@ -1,0 +1,7 @@
+fuel:
+  name: "diesel EN590"
+  kind: "liquid_diesel"    # "steam_solid", "LPG", "H2", ...
+  pci_j_per_kg: 42.6e6
+  density_kg_per_m3: 840
+  safety_notes: "—"
+

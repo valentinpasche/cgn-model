@@ -1,0 +1,43 @@
+ # environment.yml (development, editable)
+name: cgnmodel
+
+  # "nodefaults" is similar to "-c conda-forge --override-channels" but for yml
+channels:
+  - conda-forge
+  - nodefaults
+
+dependencies:
+  # --- Python runtime ---
+  - python>=3.13
+
+  # --- Core data stack ---
+  - pyyaml
+  - pydantic
+  - numpy
+  - matplotlib
+  - pandas
+  - pint # gestion des unités (optionnel)
+  # - pyarrow
+
+  # --- Graph algorithms ---
+  - networkx
+
+  # # --- Dev & docs (optional but recommended) ---
+  - pytest
+  - ruff
+  - black
+  
+  # - mkdocs
+  # - mkdocs-material
+  # - mkdocstrings
+  # - mkdocstrings-python
+
+  # --- IDE ---
+  - spyder
+  - spyder-kernels
+
+  # # --- Editable install of the package from this folder ---
+  # - pip
+  # - pip:
+  #   - -e . # va chercher le "pyproject.toml" à la racine
+
