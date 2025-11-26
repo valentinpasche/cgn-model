@@ -85,9 +85,9 @@ profiles = {
 
 # Config
 cfg_txt = """
-boat:
+vessel:
   name: "Vevey"
-  type: DE
+  type: "DE"
   
 profil_vitesse:
     coefs:
