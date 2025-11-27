@@ -55,7 +55,14 @@ def speed_to_shaft_power(v_t, coefs):
     shaft_power_demand = np.clip(shaft_power, 0, None)
     return shaft_power_demand
 
-
+def read_yaml(file):
+    with open(file) as stream:
+        try:
+            cfg = yaml.safe_load(stream)
+            return cfg
+        except yaml.YAMLError as exc:
+            print(exc)
+        
 
 # Paramètres vecteurs
 t_tot = 3600 # (s)
@@ -119,7 +126,9 @@ converters:
     eta:  0.9    # Fallback sur "constant_eta" si "kind" non renseigé et "eta" présent au top-level
 """
 
-cfg = yaml.safe_load(cfg_txt)
+cfg = read_yaml("config_demo_solver_dag.yaml")
+# cfg = yaml.safe_load(cfg_txt)
+
 solver = SolverDAG.from_yaml(cfg)
 
 solver.draw_dag()
