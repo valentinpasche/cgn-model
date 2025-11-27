@@ -112,7 +112,7 @@ converters:
     to_bus:   "Electrical:main"
     kind: "constant_eta"
     params:
-      eta:  0.38 
+      eta:  0.38
   - id: "motor"
     from_bus: "Electrical:main"
     to_bus:   "Mechanical:shaft"
