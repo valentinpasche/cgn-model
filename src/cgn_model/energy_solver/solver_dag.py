@@ -48,11 +48,12 @@ __all__ = ["SolverDAG"]
 class Bus:
     id: str
     carrier: str
-    net_w: FArray | None = field(default=None)
+    unit: str = "W"
+    net_w: FArray | None = None       # profil 1D en W
     ledger: dict[str, FArray] = field(default_factory=dict)
 
 @dataclass
-class SignedInput:
+class Input:
     id: str
     bus: str
     profile: FArray | None = field(default=None, init=False)
@@ -69,7 +70,7 @@ class SolverDAG:
     mode: Mode
     buses: dict[str, Bus]
     converters: dict[str, ConverterABC]
-    inputs: dict[str, SignedInput]
+    inputs: dict[str, Input]
     dag: Graphs
     plan: Plan
 
@@ -242,20 +243,20 @@ class SolverDAG:
     # -------- Builders --------
     @staticmethod
     def _build_objects(cfg: Cfg
-    ) -> tuple[dict[str, Bus], dict[str, ConverterABC], dict[str, SignedInput]]:
+    ) -> tuple[dict[str, Bus], dict[str, ConverterABC], dict[str, Input]]:
         from .components import build_converter_from_cfg  # un seul import stable
         
         # 1) Buses
         buses: dict[str, Bus] = {
-            b.id: Bus(id=b.id, carrier=b.carrier) for b in cfg.buses
+            b.id: Bus(id=b.id, carrier=b.carrier, unit=b.unit) for b in cfg.buses
         }
         # 2) Converters
         converters: dict[str, ConverterABC] = {
             c.id: build_converter_from_cfg(c) for c in cfg.converters
         }
         # 3) Inputs
-        inputs: dict[str, SignedInput] = {
-            s.id: SignedInput(id=s.id, bus=s.bus) for s in cfg.inputs
+        inputs: dict[str, Input] = {
+            s.id: Input(id=s.id, bus=s.bus) for s in cfg.inputs
         }
         
         return (buses, converters, inputs)
@@ -264,7 +265,7 @@ class SolverDAG:
     def _build_graphs(
         buses: dict[str, Bus],
         converters: dict[str, ConverterABC],
-        inputs: dict[str, SignedInput],
+        inputs: dict[str, Input],
     ) -> Graphs:
         
         G = nx.DiGraph()
