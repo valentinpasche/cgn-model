@@ -105,46 +105,48 @@ solver:
   mode: "inverse"
 
 buses:
-  - {id: "Mechanical:shaft", carrier: "Mechanical"}
-  - {id: "Electrical:main",  carrier: "Electrical"}
-  - {id: "Chemical:fuel",    carrier: "Chemical"}
+  - { id: "main_shaft",    carrier: "Mechanical" }
+  - { id: "distrib_elec",  carrier: "Electrical" }
+  - { id: "distrib_fuel",  carrier: "Chemical" }
 
 inputs:
-  - {id: "shaft_demand", bus: "Mechanical:shaft"}
-  - {id: "navops",       bus: "Electrical:main"}
+  - { id: "shaft_demand",  bus: "main_shaft" }
+  - { id: "navops",        bus: "distrib_elec" }
 
 converters:
   - id: "genset"
-    from_bus: "Chemical:fuel"
-    to_bus:   "Electrical:main"
+    from_bus: "distrib_fuel"
+    to_bus:   "distrib_elec"
     kind: "constant_eta"
     params:
       eta:  0.38
   - id: "motor"
-    from_bus: "Electrical:main"
-    to_bus:   "Mechanical:shaft"
-    eta:  0.9    # Fallback sur "constant_eta" si "kind" non renseigé et "eta" présent au top-level
+    from_bus: "distrib_elec"
+    to_bus:   "main_shaft"
+    kind: "constant_eta"
+    params:
+      eta:  0.9
 """
 
-cfg = read_yaml("config_demo_solver_dag.yaml")
-# cfg = yaml.safe_load(cfg_txt)
+# cfg = read_yaml("config_demo_solver_dag.yaml")
+cfg = yaml.safe_load(cfg_txt)
 
 solver = SolverDAG.from_yaml(cfg)
 
-# solver.draw_dag()
+solver.draw_dag()
 
 prepare_state(solver, profiles)
 run_vector(solver)
 
 # quick sanity prints
-print("net_W Mechanical:", solver.buses["Mechanical:shaft"].net_w[:3])
-print("net_W Electrical:", solver.buses["Electrical:main"].net_w[:3])
-print("net_W Chemical:  ", solver.buses["Chemical:fuel"].net_w[:3])
-print("motor p_in / p_out:", solver.converters["motor"].p_in_w[:3], solver.converters["motor"].p_out_w[:3])
-print("genset p_in / p_out:", solver.converters["genset"].p_in_w[:3], solver.converters["genset"].p_out_w[:3])
+# print("net_W Mechanical:", solver.buses["Mechanical:shaft"].net_w[:3])
+# print("net_W Electrical:", solver.buses["Electrical:main"].net_w[:3])
+# print("net_W Chemical:  ", solver.buses["Chemical:fuel"].net_w[:3])
+# print("motor p_in / p_out:", solver.converters["motor"].p_in_w[:3], solver.converters["motor"].p_out_w[:3])
+# print("genset p_in / p_out:", solver.converters["genset"].p_in_w[:3], solver.converters["genset"].p_out_w[:3])
 
 
-plot_state(solver, t)
+# plot_state(solver, t)
 
 
 
