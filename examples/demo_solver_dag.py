@@ -131,7 +131,7 @@ cfg = read_yaml("config_demo_solver_dag.yaml")
 
 solver = SolverDAG.from_yaml(cfg)
 
-solver.draw_dag()
+# solver.draw_dag()
 
 prepare_state(solver, profiles)
 run_vector(solver)
