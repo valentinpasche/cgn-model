@@ -12,10 +12,43 @@ class SolverCfg(BaseModel):
     mode: Mode
 
 # --- Buses ---
+_CANON_UNIT = {
+    "Electrical": "W",
+    "Mechanical": "W",
+    "Chemical":   "W",      # plus tard tu pourras passer à "W_LHV" si tu veux distinguer
+}
+
 class BusCfg(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     carrier: StrictStr
+    unit: StrictStr | None = None  # optionnelle dans le YAML
+
+    @model_validator(mode="after")
+    def _unit_policy(self):
+        expected = _CANON_UNIT.get(self.carrier, "W")
+
+        # normalisation tolérante si une unité est fournie
+        if self.unit is None:
+            self.unit = expected
+        else:
+            u = self.unit.strip().lower()
+            if u in {"w", "watt", "watts"}:
+                self.unit = "W"
+            elif u == "w_lhv":
+                self.unit = "W_LHV"
+            else:
+                # valeur inconnue -> on force à l’unité canonique du carrier
+                self.unit = expected
+
+        # vérif finale : pour l’instant on impose l’unité canonique
+        if self.unit != expected:
+            raise ValueError(
+                f"Unité incohérente pour carrier={self.carrier!r}: "
+                f"reçu {self.unit!r}, attendu {expected!r}."
+            )
+        return self
+
 
 # --- Inputs ---
 class InputCfg(BaseModel):
