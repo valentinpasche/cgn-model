@@ -38,7 +38,11 @@ class Vessel:
         parsed = cls._parse_cfg(cfg)          # forme normalisée
         cfg_model = cls._validate_cfg(parsed) # Pydantic
         solver = SolverDAG.from_yaml(cfg)
-        return cls(name=cfg_model.name, vessel_type=cfg_model.vessel_type, solver=solver)
+        return cls(
+            name=cfg_model.name,
+            vessel_type=cfg_model.vessel_type,
+            solver=solver,
+        )
 
     @staticmethod
     def _parse_cfg(cfg: str | dict[str, Any]) -> dict[str, Any]:
@@ -87,7 +91,10 @@ class Vessel:
                 )
             vessel["type"] = mapped
         
-        return {"name": vessel.get("name"), "vessel_type": vessel.get("type")}
+        return {
+            "name": vessel.get("name"),
+            "vessel_type": vessel.get("type"),
+        }
     
     @staticmethod
     def _validate_cfg(parsed: dict[str, Any]) -> VesselCfg:
