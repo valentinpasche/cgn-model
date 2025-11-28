@@ -52,8 +52,15 @@ class Vessel:
             if isinstance(v, str):
                 vessel[k] = v.strip()
 
-        vessel.setdefault("name", "unknown")
-        vessel.setdefault("type", "undefined")
+        # helper: None ou "" -> défaut
+        def coalesce_default(d: dict[str, Any], key: str, default: str) -> None:
+            val = d.get(key, None)
+            if val is None or (isinstance(val, str) and val == ""):
+                d[key] = default
+        
+        coalesce_default(vessel, "name", "unknown")
+        coalesce_default(vessel, "type", "undefined")
+        
         return {"name": vessel.get("name"), "be_type": vessel.get("type")}
     
     @staticmethod
