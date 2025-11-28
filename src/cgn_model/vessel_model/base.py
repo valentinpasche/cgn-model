@@ -3,18 +3,29 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
+from pydantic import BaseModel, StrictStr, ConfigDict, model_validator
 import copy, yaml
 
 from numpy.typing import NDArray
 import numpy as np
 
 from cgn_model.energy_solver import SolverDAG
+from cgn_model.energy_solver.types import Mode
 
 type FArray = NDArray[np.floating]
-type SolverMode = Literal["forward", "inverse"]
+type SolverMode = Mode
 type BEType = Literal["DE", "steam", "undefined"]
 
 __all__ = ["Vessel"]
+
+class VesselCfg(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: StrictStr
+    be_type: BEType
+
+    @model_validator(mode="after")
+    def check_fields(self):
+        return self
 
 @dataclass
 class Vessel:
@@ -24,13 +35,10 @@ class Vessel:
 
     @classmethod
     def from_yaml(cls, cfg: str | dict[str, Any]) -> "Vessel":
-        vessel_meta = cls._parse_cfg(cfg)
+        parsed = cls._parse_cfg(cfg)          # forme normalisée
+        cfg_model = cls._validate_cfg(parsed) # Pydantic
         solver = SolverDAG.from_yaml(cfg)
-        return cls(
-            name=vessel_meta.get("name", "unknown"),
-            be_type=vessel_meta.get("type", "undefined"),
-            solver=solver,
-        )
+        return cls(name=cfg_model.name, be_type=cfg_model.be_type, solver=solver)
 
     @staticmethod
     def _parse_cfg(cfg: str | dict[str, Any]) -> dict[str, Any]:
@@ -46,7 +54,26 @@ class Vessel:
 
         vessel.setdefault("name", "unknown")
         vessel.setdefault("type", "undefined")
-        return {"name": vessel.get("name"), "type": vessel.get("type")}
+        return {"name": vessel.get("name"), "be_type": vessel.get("type")}
+    
+    @staticmethod
+    def _validate_cfg(parsed: dict[str, Any]) -> VesselCfg:
+        """
+        Valide et type avec Pydantic. Retourne une instance Cfg.
+        Lève ValueError avec un message lisible en cas d'erreur.
+        """
+        from pydantic import ValidationError
+        try:
+            return VesselCfg.model_validate(parsed)
+        except ValidationError as e:
+            lines = []
+            for err in e.errors():
+                loc = " -> ".join(str(p) for p in err.get("loc", ()))
+                msg = err.get("msg", "invalid")
+                lines.append(f"- {loc}: {msg}")
+            pretty = "\n".join(lines)
+            raise ValueError(f"YAML invalide:\n{pretty}") from e
+
 
 
 
@@ -85,7 +112,9 @@ if __name__ == "__main__":
       - id: "motor"
         from_bus: "Electrical:main"
         to_bus:   "Mechanical:shaft"
-        eta:  0.9    # Fallback sur "constant_eta" si "kind" non renseigé et "eta" présent au top-level
+        kind: "constant_eta"
+        params:
+          eta:  0.9
     """
     
     cfg = yaml.safe_load(cfg_txt)
@@ -101,7 +130,7 @@ if __name__ == "__main__":
         return dct_vessel_solver == dct_solver
     
     if validation_init_solver(vessel, solver):
-        print("OK : Les 2 solveurs sont identiques !")
+        print("\nOK : Les 2 solveurs sont identiques !\n")
     else:
-        print("ATTENTION : Les 2 solveurs sont différents !")
+        print("\nATTENTION : Les 2 solveurs sont différents !\n")
         
