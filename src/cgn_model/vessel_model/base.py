@@ -14,14 +14,14 @@ from cgn_model.energy_solver.types import Mode
 
 type FArray = NDArray[np.floating]
 type SolverMode = Mode
-type BEType = Literal["DE", "steam", "undefined"]
+type VesselType = Literal["DE", "steam", "undefined"]
 
 __all__ = ["Vessel"]
 
 class VesselCfg(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: StrictStr
-    be_type: BEType
+    vessel_type: VesselType
 
     @model_validator(mode="after")
     def check_fields(self):
@@ -30,7 +30,7 @@ class VesselCfg(BaseModel):
 @dataclass
 class Vessel:
     name: str
-    be_type: BEType
+    vessel_type: VesselType
     solver: SolverDAG
 
     @classmethod
@@ -38,7 +38,7 @@ class Vessel:
         parsed = cls._parse_cfg(cfg)          # forme normalisée
         cfg_model = cls._validate_cfg(parsed) # Pydantic
         solver = SolverDAG.from_yaml(cfg)
-        return cls(name=cfg_model.name, be_type=cfg_model.be_type, solver=solver)
+        return cls(name=cfg_model.name, vessel_type=cfg_model.vessel_type, solver=solver)
 
     @staticmethod
     def _parse_cfg(cfg: str | dict[str, Any]) -> dict[str, Any]:
@@ -51,17 +51,43 @@ class Vessel:
         for k, v in list(vessel.items()):
             if isinstance(v, str):
                 vessel[k] = v.strip()
-
-        # helper: None ou "" -> défaut
-        def coalesce_default(d: dict[str, Any], key: str, default: str) -> None:
-            val = d.get(key, None)
-            if val is None or (isinstance(val, str) and val == ""):
-                d[key] = default
         
-        coalesce_default(vessel, "name", "unknown")
-        coalesce_default(vessel, "type", "undefined")
+        # --- Tratement "type de propulsion" ---
         
-        return {"name": vessel.get("name"), "be_type": vessel.get("type")}
+        # 1) lire brut
+        t_raw = vessel.get("type", None)
+        
+        # 2) cas "absent" ou vide -> undefined
+        if t_raw is None or (isinstance(t_raw, str) and t_raw.strip() == ""):
+            vessel["type"] = "undefined"
+        else:
+            # 3) normalisation + synonymes
+            t_norm = t_raw.strip().lower()
+            synonyms = {
+                # diesel electric
+                "de": "DE",
+                "diesel": "DE",
+                "diesel_engine": "DE",
+                "diesel_electric": "DE",
+        
+                # vapeur / steam
+                "steam": "steam",
+                "vapeur": "steam",
+        
+                # on tolère aussi "undefined"
+                "undefined": "undefined",
+            }
+            mapped = synonyms.get(t_norm)
+            if mapped is None:
+                # 4) valeur inconnue -> erreur lisible
+                raise ValueError(
+                    f"Type de propulsion invalide: {t_raw!r}. "
+                    "Valeurs attendues: 'DE' (synonymes: de, diesel) ou 'steam' (synonymes: steam, vapeur). "
+                    "Laissez vide pour 'undefined'."
+                )
+            vessel["type"] = mapped
+        
+        return {"name": vessel.get("name"), "vessel_type": vessel.get("type")}
     
     @staticmethod
     def _validate_cfg(parsed: dict[str, Any]) -> VesselCfg:
