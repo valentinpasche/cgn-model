@@ -183,9 +183,36 @@ class SolverDAG:
             solver["mode"] = solver["mode"].strip()
     
         strip_in_place(buses, ["id", "carrier"])
-        strip_in_place(inputs, ["id", "bus"])
         strip_in_place(converters, ["id", "from_bus", "to_bus", "kind"])
+        # on strippera les inputs après projection
+        
+        # 5) PROJECTION des inputs → ne garder que {id, bus}
+        projected_inputs: list[dict[str, Any]] = []
+        for i, raw in enumerate(inputs):
+            if not isinstance(raw, dict):
+                raise TypeError(f"inputs[{i}] doit être un mapping (dict).")
+            try:
+                item = {"id": raw["id"], "bus": raw["bus"]}
+            except KeyError as e:
+                raise ValueError(f"inputs[{i}] manque la clé requise {e.args[0]!r}") from e
     
+            # strip
+            for k in ("id", "bus"):
+                if isinstance(item[k], str):
+                    item[k] = item[k].strip()
+    
+            # avertir si des champs supplémentaires ont été supprimés (ex: 'source')
+            extras = set(raw.keys()) - {"id", "bus"}
+            if extras:
+                warnings.warn(
+                    f"inputs[{i}] : clés ignorées pour le solver : {sorted(extras)}",
+                    stacklevel=2,
+                )
+    
+            projected_inputs.append(item)
+    
+        inputs = projected_inputs
+        
         # 5) Fallback 'kind' + normalisation 'params' (toujours sur la COPIE)
         for conv in converters:
             kind = conv.get("kind")
