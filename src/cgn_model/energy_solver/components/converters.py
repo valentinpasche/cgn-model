@@ -107,6 +107,10 @@ type FArray = NDArray[np.floating]
 
 __all__ = ["ConverterABC", "build_converter_from_cfg"]
 
+# ============================================================
+#                 Base + Registre d’adapters
+# ============================================================
+
 # ---- base ABC: Contrat nominal (impl imposée)
 class ConverterABC(ABC):
     """
@@ -121,7 +125,6 @@ class ConverterABC(ABC):
     def forward(self, p_in_w: FArray) -> FArray: ...
     @abstractmethod
     def inverse(self, p_out_w: FArray) -> FArray: ...
-
 
 # ---- registre
 class ConverterParams(BaseModel):
@@ -149,7 +152,9 @@ def build_converter_from_cfg(c) -> ConverterABC:
     params = ParamsModel.model_validate(c.params or {})
     return builder(c.id, c.from_bus, c.to_bus, params)
 
-# ------------------------ Zone de travail ---------------------------------- #
+# ============================================================
+#                Impl. : Convertisseur à rendement constant
+# ============================================================
 
 # ---- un convertisseur concret: constant_eta
 class ConstantEtaParams(ConverterParams):
@@ -171,6 +176,10 @@ class ConstantEtaConverter(ConverterABC):
     def inverse(self, p_out_w: FArray) -> FArray: return p_out_w / self.eta
 
 @register("constant_eta", ConstantEtaParams)
-def build_constant_eta(id: str, from_bus: str, to_bus: str, params: ConstantEtaParams) -> ConverterABC:
-    return ConstantEtaConverter(id=id, from_bus=from_bus, to_bus=to_bus, eta=params.eta)
+def build_constant_eta(id: str, from_bus: str, to_bus: str, params: ConstantEtaParams
+) -> ConverterABC:
+    return ConstantEtaConverter(
+        id=id, from_bus=from_bus, to_bus=to_bus, eta=params.eta
+    )
 
+# ------------------------------------------------------------
