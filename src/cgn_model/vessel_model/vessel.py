@@ -262,23 +262,30 @@ class Vessel:
         return signals
 
     # -------- Préparation des inputs pour le solver --------
-    def build_solver_inputs(self) -> dict[str, tuple[str, FArray]]:
+    def build_solver_inputs(
+        self,
+        *,
+        profiles_only: bool = False,
+        verbose: bool = False,
+    ) -> dict[str, FArray] | dict[str, tuple[str, FArray]]:
         """
-        Retourne un mapping prêt pour le solver :
-            input_id -> (bus_id, profile_W)
+        Retourne un mapping prêt pour le solver.
+          - Par défaut retourne: input_id -> (bus_id, profile_W)
+          - Si profiles_only=True, retourne: input_id -> profile_W
 
         Pré-conditions :
           - self.signals est construit (via from_yaml)
           - chaque binding.source doit mener à un signal en 'W'
             (les adapters doivent donc produire de la puissance)
-
-        NB: injection effective dans le solver à faire côté appelant
-            (ex: via ta fonction prepare_state/run_vector).
         """
         if self.signals is None or self.input_binds is None:
             raise RuntimeError("Vessel non initialisé (signals/input_binds manquants).")
 
-        result: dict[str, tuple[str, FArray]] = {}
+        # récupérer (bus attendu par le solver) depuis la config du solver
+        solver_bus_by_input = {inp_id: inp.bus for inp_id, inp in self.solver.inputs.items()}
+
+        # construire le mapping
+        full: dict[str, tuple[str, np.ndarray]] = {}
         for bind in self.input_binds:
             try:
                 arr, unit = self.signals[bind.source]
@@ -290,13 +297,52 @@ class Vessel:
                     f"Le binding {bind.id!r} fournit une unité {unit!r} ≠ 'W'. "
                     "Assure-toi que l'adapter produit des W (ex. kind='poly_speed_to_power')."
                 )
-            result[bind.id] = (bind.bus, np.asarray(arr, dtype=np.float64))
-        return result
+
+            bus_expected = solver_bus_by_input.get(bind.id)
+            if bus_expected is None:
+                raise KeyError(f"L'input {bind.id!r} n'existe pas dans le solver.")
+            if bind.bus != bus_expected:
+                raise ValueError(
+                    f"Bus mismatch pour l'input {bind.id!r}: YAML={bind.bus!r} vs Solver={bus_expected!r}"
+                )
+
+            arr_w = np.asarray(arr, dtype=np.float64)
+            full[bind.id] = (bind.bus, arr_w)
+
+            if verbose:
+                print(f"[inputs] {bind.id} -> {bind.bus} | len={len(arr_w)} | first={float(arr_w[0])}")
+
+        if profiles_only:
+            return {k: v[1] for k, v in full.items()}
+        return full
+
+    def apply_inputs_to_solver(self, *, strict: bool = True, verbose: bool = False) -> int:
+        """
+        Valide et injecte les inputs dans le solver via `prepare_state`.
+        Retourne la valeur de retour de `prepare_state` (p.ex. nombre d’inputs appliqués).
+        """
+        # construit un mapping id -> array (avec validation bus)
+        profiles: dict[str, np.ndarray] = self.build_solver_inputs(
+            profiles_only=True, verbose=verbose
+        )  # id -> arr_W
+
+        # (optionnel) vérifications supplémentaires
+        if strict:
+            # alignement des longueurs (si pertinent pour ta simu vectorielle)
+            lengths = {k: len(v) for k, v in profiles.items()}
+            if len(set(lengths.values())) > 1:
+                raise ValueError(f"Profils de longueurs différentes: {lengths}")
+
+        # injection dans le solver
+        # import local pour éviter un import circulaire si tu réexportes prepare_state
+        from cgn_model.energy_solver import prepare_state
+
+        return prepare_state(self.solver, profiles)
 
 
 # --------------------------- Demo ---------------------------
 if __name__ == "__main__":
-    # Petit test manuel (optionnel)
+    
     cfg_txt = """
 vessel:
   name: "Vevey"
@@ -351,11 +397,13 @@ converters:
     params: { eta: 0.9 }
 """
     
-    cfg = yaml.safe_load(cfg_txt)
-    vessel = Vessel.from_yaml(cfg)
-    mapping = vessel.build_solver_inputs()
-    for k, (bus, arr) in mapping.items():
-        print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
+    # # === Test de base de la création de la classe Vessel ===
+
+    # cfg = yaml.safe_load(cfg_txt)
+    # vessel = Vessel.from_yaml(cfg)
+    # mapping = vessel.build_solver_inputs()
+    # for k, (bus, arr) in mapping.items():
+    #     print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
 
     
     # # === Validation de la config en 2 paties, Vessel -> Solveur ===
@@ -374,4 +422,20 @@ converters:
     #     print("\nOK : Les 2 solveurs sont identiques !\n")
     # else:
     #     print("\nATTENTION : Les 2 solveurs sont différents !\n")
+    
+    
+    # === Test de la création des inputs de Vessel vers le Solveur interne ===
+    
+    cfg = yaml.safe_load(cfg_txt)
+    vessel_1 = Vessel.from_yaml(cfg)
+    vessel_2 = Vessel.from_yaml(cfg)
+    
+    # Option 1: juste récupérer les profils prêts
+    mapping = vessel_1.build_solver_inputs(profiles_only=True, verbose=True)
+    # puis ailleurs:
+    from cgn_model.energy_solver import prepare_state
+    prepare_state(vessel_1.solver, mapping)
+    
+    # Option 2: tout faire en une ligne
+    vessel_2.apply_inputs_to_solver(verbose=True)
         
