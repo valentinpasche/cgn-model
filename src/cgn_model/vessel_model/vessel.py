@@ -1,9 +1,8 @@
-# cgn_model/vessel_model/base.py
+# cgn_model/vessel_model/vessel.py
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Literal
-from pydantic import BaseModel, StrictStr, ConfigDict, model_validator
+from typing import Any
 import copy, yaml
 
 from numpy.typing import NDArray
@@ -12,20 +11,18 @@ import numpy as np
 from cgn_model.energy_solver import SolverDAG
 from cgn_model.energy_solver.types import Mode
 
+from cgn_model.vessel_model.config import (
+    VesselType,
+    VesselCfg,
+)
+
 type FArray = NDArray[np.floating]
 type SolverMode = Mode
-type VesselType = Literal["DE", "steam", "undefined"]
+
 
 __all__ = ["Vessel"]
 
-class VesselCfg(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: StrictStr
-    vessel_type: VesselType
 
-    @model_validator(mode="after")
-    def check_fields(self):
-        return self
 
 @dataclass
 class Vessel:
