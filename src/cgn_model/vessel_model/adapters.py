@@ -191,6 +191,9 @@ class AdapterABC(ABC):
     Transforme des signaux en (array, unit_out).
     - Mono-entrée : implémente `apply`.
     - Multi-entrées : implémente `required_sources` + `apply_multi`.
+    
+    Attention : Il faut déclarer les adapters multi-entrées et les clés que
+    params contiennent leurs sources dans le fichier `vessel_model/config.py`
     """
     id: str
     source: str         # id mono-entrée (ignoré par multi si souhaité)
@@ -288,6 +291,8 @@ def _build_speed_to_power_ploy(id: str, source: str, unit_in: str, unit_out: str
 
 # ============================================================
 # ---- Impl 2 — puissance = force * vitesse (multi-entrées)
+# Déclarer quels adapters sont multi-entrées et quelles clés params contiennent leurs sources,
+# dans le fichier de config du vessel_model !!!
 # ============================================================
 
 class ForceAndSpeedToPowerParams(AdapterParams):

@@ -18,6 +18,7 @@ from cgn_model.vessel_model.config import (
     ProfileCfg,
     AdapterCfg,
     InputBindCfg,
+    VesselSectionsCfg,
 )
 from cgn_model.vessel_model.adapters import AdapterABC, build_adapter_from_cfg
 
@@ -52,9 +53,8 @@ class InputBind:
     bus: str
     source: str
 
-type Profiles = dict[str, Profile]
+
 type Signals = dict[str, tuple[FArray, str]]  # id -> (array, unit)
-type Adapters = dict[str, AdapterABC]
 
 __all__ = ["Vessel"]
 
@@ -74,10 +74,10 @@ class Vessel:
     solver: SolverDAG
 
     # runtime (facultatif, utile pour itérer/inspecter)
-    profiles: Profiles | None = None
-    adapters: Adapters | None = None
+    profiles: dict[str, Profile] | None = None
+    adapters: dict[str, AdapterABC] | None = None
     input_binds: list[InputBind] | None = None
-    signals: Signals | None = None  # profils bruts + adapters matérialisés
+    signals: dict[str, tuple[FArray, str]] | None = None  # profils bruts + adapters matérialisés
 
     # -------- Construction principale --------
     @classmethod
@@ -95,9 +95,10 @@ class Vessel:
 
         # 3) Sections 'métier' (profiles/adapters/inputs) → runtime objects
         raw = cls._extract_sections(cfg)
-        profiles = cls._build_profiles(raw["profiles"])
-        adapters = cls._build_adapters(raw["adapters"])
-        input_binds = cls._build_input_binds(raw["inputs"])
+        sections = VesselSectionsCfg.model_validate(raw)   # déclenche cross_checks()
+        profiles    = cls._build_profiles(sections.profiles)
+        adapters    = cls._build_adapters(sections.adapters)
+        input_binds = cls._build_input_binds(sections.inputs)
 
         # 4) Matérialiser tous les signaux (profiles bruts + adapters)
         signals = cls._materialize_signals(profiles, adapters)
@@ -203,31 +204,23 @@ class Vessel:
 
     # -------- Builders runtime --------
     @staticmethod
-    def _build_profiles(cfg_profiles: list[dict[str, Any]]) -> Profiles:
-        profiles: Profiles = {}
-        for i, raw in enumerate(cfg_profiles):
-            p = ProfileCfg.model_validate(raw)
+    def _build_profiles(cfg_profiles: list[ProfileCfg]) -> dict[str, Profile]:
+        profiles: dict[str, Profile] = {}
+        for p in cfg_profiles:
             if p.data is None:
-                # support 'file' non implémenté ici
                 raise ValueError(f"Profile {p.id!r}: 'data' manquant (support 'file' non implémenté).")
             arr = np.asarray(p.data, dtype=np.float64)
             profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
         return profiles
 
     @staticmethod
-    def _build_adapters(cfg_adapters: list[dict[str, Any]]) -> Adapters:
-        adapters: Adapters = {}
-        for raw in cfg_adapters:
-            a = AdapterCfg.model_validate(raw)
-            adapters[a.id] = build_adapter_from_cfg(a)
+    def _build_adapters(cfg_adapters: list[AdapterCfg]) -> dict[str, AdapterABC]:
+        adapters = {a.id: build_adapter_from_cfg(a) for a in cfg_adapters}
         return adapters
 
     @staticmethod
-    def _build_input_binds(cfg_inputs: list[dict[str, Any]]) -> list[InputBind]:
-        binds: list[InputBind] = []
-        for raw in cfg_inputs:
-            b = InputBindCfg.model_validate(raw)
-            binds.append(InputBind(id=b.id, bus=b.bus, source=b.source))
+    def _build_input_binds(cfg_inputs: list[InputBindCfg]) -> list[InputBind]:
+        binds = [InputBind(id=b.id, bus=b.bus, source=b.source) for b in cfg_inputs]
         return binds
 
     # -------- Matérialisation des signaux --------
@@ -369,7 +362,7 @@ adapters:
     unit_in: "m/s"                    # l’adapter attend m/s
     unit_out: "N"                     # et produit des Newton
     params:
-      coeffs: [0.0, 100.0, 0.0, 5.0]  # exemple ([a0, a1, a2] -> P = a0 + a1*v + a2*v^2)
+      coeffs: [-208.7, 1902.9, 530.5, 95.1]  # exemple ([a0, a1, a2] -> P = a0 + a1*v + a2*v^2)
     
     # 2) puissance = F * v (multi-entrées)
   - id: "shaft_power_from_Fv"
@@ -392,7 +385,7 @@ adapters:
     unit_in: "m/s"                    # l’adapter attend m/s
     unit_out: "W"                     # et produit des Watts
     params:
-      coeffs: [0.0, 100.0, 0.0, 5.0]
+      coeffs: [0.0, -208.7, 1902.9, 530.5, 95.1]   # ici juste 1 degré de plus que la combinaison de 1) + 2)
 
 inputs:
   - id: "shaft_demand"
@@ -427,11 +420,11 @@ converters:
     
     # # === Test de base de la création de la classe Vessel ===
 
-    # cfg = yaml.safe_load(cfg_txt)
-    # vessel = Vessel.from_yaml(cfg)
-    # mapping = vessel.build_solver_inputs()
-    # for k, (bus, arr) in mapping.items():
-    #     print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
+    cfg = yaml.safe_load(cfg_txt)
+    vessel = Vessel.from_yaml(cfg)
+    mapping = vessel.build_solver_inputs()
+    for k, (bus, arr) in mapping.items():
+        print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
 
     
     # # === Validation de la config en 2 paties, Vessel -> Solveur ===
@@ -454,16 +447,20 @@ converters:
     
     # === Test de la création des inputs de Vessel vers le Solveur interne ===
     
-    cfg = yaml.safe_load(cfg_txt)
-    vessel_1 = Vessel.from_yaml(cfg)
-    vessel_2 = Vessel.from_yaml(cfg)
+    # cfg = yaml.safe_load(cfg_txt)
+    # vessel_1 = Vessel.from_yaml(cfg)
+    # vessel_2 = Vessel.from_yaml(cfg)
     
-    # Option 1: juste récupérer les profils prêts
-    mapping = vessel_1.build_solver_inputs(profiles_only=True, verbose=True)
-    # puis ailleurs:
-    from cgn_model.energy_solver import prepare_state
-    prepare_state(vessel_1.solver, mapping)
+    # # Option 1: juste récupérer les profils prêts
+    # mapping = vessel_1.build_solver_inputs(profiles_only=True, verbose=True)
+    # # puis ailleurs:
+    # from cgn_model.energy_solver import prepare_state
+    # prepare_state(vessel_1.solver, mapping)
     
-    # Option 2: tout faire en une ligne
-    vessel_2.apply_inputs_to_solver(verbose=True)
-        
+    # # Option 2: tout faire en une ligne
+    # vessel_2.apply_inputs_to_solver(verbose=True)
+    
+    
+    
+    
+    
