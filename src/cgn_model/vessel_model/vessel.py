@@ -47,50 +47,61 @@ class Vessel:
         if not isinstance(source, dict) or source is None:
             raise ValueError("La configuration YAML est vide ou n'est pas un mapping.")
         vessel = copy.deepcopy(source.get("vessel")) if isinstance(source.get("vessel"), dict) else {}
-
+    
         # strip naïf
         for k, v in list(vessel.items()):
             if isinstance(v, str):
                 vessel[k] = v.strip()
-        
-        # --- Tratement "type de propulsion" ---
-        
-        # 1) lire brut
-        t_raw = vessel.get("type", None)
-        
-        # 2) cas "absent" ou vide -> undefined
-        if t_raw is None or (isinstance(t_raw, str) and t_raw.strip() == ""):
-            vessel["type"] = "undefined"
+    
+        # Fallback nom
+        vessel.setdefault("name", "unknown")
+    
+        # --- Traitement du type de propulsion: accepter 'vessel_type' ou 'type'
+        vt_raw = vessel.get("vessel_type", None)
+        t_raw  = vessel.get("type", None)
+    
+        # Conflit explicite si les deux sont fournis et diffèrent (après strip/lower)
+        def _norm(s):
+            return (s or "").strip().lower()
+    
+        if vt_raw is not None and t_raw is not None and _norm(vt_raw) != _norm(t_raw):
+            raise ValueError(
+                f"Conflit entre 'vessel_type'={vt_raw!r} et 'type'={t_raw!r}. "
+                "Ne fournissez qu'une seule des deux clés, avec la même valeur."
+            )
+    
+        # Choix de la source (priorité à 'vessel_type')
+        raw = vt_raw if vt_raw is not None else t_raw
+    
+        # Vide/absent -> undefined
+        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+            vessel_type = "undefined"
         else:
-            # 3) normalisation + synonymes
-            t_norm = t_raw.strip().lower()
+            s = raw.strip().lower()
             synonyms = {
-                # diesel electric
+                # Diesel
                 "de": "DE",
                 "diesel": "DE",
                 "diesel_engine": "DE",
-                "diesel_electric": "DE",
-        
-                # vapeur / steam
+                # Vapeur
                 "steam": "steam",
                 "vapeur": "steam",
-        
-                # on tolère aussi "undefined"
+                # On tolère explicitement 'undefined'
                 "undefined": "undefined",
             }
-            mapped = synonyms.get(t_norm)
+            mapped = synonyms.get(s)
             if mapped is None:
-                # 4) valeur inconnue -> erreur lisible
                 raise ValueError(
-                    f"Type de propulsion invalide: {t_raw!r}. "
+                    f"Type de propulsion invalide: {raw!r}. "
                     "Valeurs attendues: 'DE' (synonymes: de, diesel) ou 'steam' (synonymes: steam, vapeur). "
                     "Laissez vide pour 'undefined'."
                 )
-            vessel["type"] = mapped
-        
+            vessel_type = mapped
+    
+        # Sortie normalisée pour Pydantic
         return {
             "name": vessel.get("name"),
-            "vessel_type": vessel.get("type"),
+            "vessel_type": vessel_type,
         }
     
     @staticmethod
@@ -121,23 +132,42 @@ if __name__ == "__main__":
     cfg_txt = """
     vessel:
       name: "Vevey"
-      type: "DE"
-      
-    profil_vitesse:
-        coefs:
-          [0.2, 0.3, -2, ..]
+      vessel_type: "DE"
+    
+    profiles:
+      - id: "speed"
+        unit: "kn"
+        data: [10, 12, 15, 12, 8]    # ou file: "speed.csv"
+    
+      - id: "hotel_load"
+        unit: "W"
+        data: [8000, 8200, 7500, 7600, 7800]
+    
+    adapters:
+      - id: "shaft_power_from_speed"
+        kind: "poly"
+        source: "speed"
+        unit_in: "m/s"            # l’adapter attend m/s
+        unit_out: "W"             # et produit des W
+        params:
+          coeffs: [a0, a1, a2, a3]  # P = a0 + a1*v + a2*v^2 + a3*v^3
+    
+    inputs:
+      - id: "shaft_demand"
+        bus: "Mechanical:shaft"
+        source: "shaft_power_from_speed"   # via l’adapter
+    
+      - id: "navops"
+        bus: "Electrical:main"
+        source: "hotel_load"      # direct: déjà en W
     
     solver:
       mode: "inverse"
     
     buses:
-      - {id: "Mechanical:shaft", carrier: "Mechanical"}
-      - {id: "Electrical:main",  carrier: "Electrical"}
-      - {id: "Chemical:fuel",    carrier: "Chemical"}
-    
-    inputs:
-      - {id: "shaft_demand", bus: "Mechanical:shaft"}
-      - {id: "navops",       bus: "Electrical:main"}
+      - { id: "Mechanical:shaft", carrier: "Mechanical" }   # unit implicite "W"
+      - { id: "Electrical:main",  carrier: "Electrical" }
+      - { id: "Chemical:fuel",    carrier: "Chemical" }
     
     converters:
       - id: "genset"
@@ -155,19 +185,23 @@ if __name__ == "__main__":
     """
     
     cfg = yaml.safe_load(cfg_txt)
-    solver = SolverDAG.from_yaml(cfg)
+    
     vessel = Vessel.from_yaml(cfg)
     
-    def validation_init_solver(vessel, solver):
-        dct_vessel_solver = vars(vessel.solver)
-        dct_solver = vars(solver)
-        # Les ID des Graphs ne sont pas identiques
-        del dct_vessel_solver["dag"]
-        del dct_solver["dag"]
-        return dct_vessel_solver == dct_solver
+    # # === Validation de la config en 2 paties, Vessel -> Solveur ===
     
-    if validation_init_solver(vessel, solver):
-        print("\nOK : Les 2 solveurs sont identiques !\n")
-    else:
-        print("\nATTENTION : Les 2 solveurs sont différents !\n")
+    # def validation_init_solver(vessel, solver):
+    #     dct_vessel_solver = vars(vessel.solver)
+    #     dct_solver = vars(solver)
+    #     # Les ID des Graphs ne sont pas identiques
+    #     del dct_vessel_solver["dag"]
+    #     del dct_solver["dag"]
+    #     return dct_vessel_solver == dct_solver
+    
+    # solver = SolverDAG.from_yaml(cfg)
+    
+    # if validation_init_solver(vessel, solver):
+    #     print("\nOK : Les 2 solveurs sont identiques !\n")
+    # else:
+    #     print("\nATTENTION : Les 2 solveurs sont différents !\n")
         
