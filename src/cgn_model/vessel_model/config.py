@@ -5,7 +5,7 @@ from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field
 
 type VesselType = Literal["DE", "steam", "undefined"]
 
-__all__ = ["VesselCfg", "ProfileCfg", "AdapterCfg", "InputBindCfg"]
+__all__ = ["VesselType", "VesselCfg", "ProfileCfg", "AdapterCfg", "InputBindCfg"]
 
 class VesselCfg(BaseModel):
     model_config = ConfigDict(extra="forbid")
