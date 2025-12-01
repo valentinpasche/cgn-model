@@ -108,7 +108,7 @@ type FArray = NDArray[np.floating]
 __all__ = ["ConverterABC", "build_converter_from_cfg"]
 
 # ============================================================
-#                 Base + Registre d’adapters
+# ----            Base + Registre d’adapters
 # ============================================================
 
 # ---- base ABC: Contrat nominal (impl imposée)
@@ -153,10 +153,9 @@ def build_converter_from_cfg(c) -> ConverterABC:
     return builder(c.id, c.from_bus, c.to_bus, params)
 
 # ============================================================
-#                Impl. : Convertisseur à rendement constant
+# ----    Impl 1 - Convertisseur à rendement constant
 # ============================================================
 
-# ---- un convertisseur concret: constant_eta
 class ConstantEtaParams(ConverterParams):
     eta: float = Field(gt=0, le=1, allow_inf_nan=False)
 
