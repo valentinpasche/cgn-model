@@ -155,7 +155,7 @@ if __name__ == "__main__":
     inputs:
       - id: "shaft_demand"
         bus: "Mechanical:shaft"
-        source: "shaft_power_from_speed"   # via l’adapter
+        source: "shaft_power_from_speed"   # via l’adapter (clé ignorée par le solver, utilisé par Vessel)
     
       - id: "navops"
         bus: "Electrical:main"
