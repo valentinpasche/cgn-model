@@ -237,28 +237,32 @@ class Vessel:
         adapters: dict[str, AdapterABC],
     ) -> Signals:
         """
-        Produit un dict id -> (array, unit) contenant :
-          - tous les profiles bruts (tels quels),
-          - tous les adapters évalués (ordre topologique résolu).
+        id -> (array, unit) pour :
+          - tous les profiles bruts,
+          - tous les adapters évalués (ordre topo résolu).
+        Supporte mono- et multi-entrées via adapter.required_sources().
         """
         signals: Signals = {pid: (p.data, p.unit) for pid, p in profiles.items()}
-
+    
         remaining = dict(adapters)
         guard = 0
         while remaining:
             progressed = []
             for aid, adapter in remaining.items():
-                src = adapter.source
-                if src in signals:
-                    series, unit = signals[src]
-                    out_series, out_unit = adapter.apply(series, unit)
+                req = adapter.required_sources()
+                if all(sid in signals for sid in req):
+                    # construire inputs -> (array, unit)
+                    inputs = {sid: signals[sid] for sid in req}
+                    # multi-entrées si surchargé, sinon mono-entrée via apply
+                    out_series, out_unit = adapter.apply_multi(inputs)
                     signals[aid] = (out_series, out_unit)
                     progressed.append(aid)
             for aid in progressed:
                 remaining.pop(aid)
             guard += 1
             if guard > 1000:
-                raise RuntimeError("Cycle ou source manquante dans les adapters.")
+                missing = {aid: adapter.required_sources() for aid, adapter in remaining.items()}
+                raise RuntimeError(f"Cycle ou sources manquantes dans les adapters: {missing}")
         return signals
 
     # -------- Préparation des inputs pour le solver --------
@@ -358,18 +362,42 @@ profiles:
     data: [8000, 8200, 7500, 7600, 7800]
 
 adapters:
-  - id: "shaft_power_from_speed"
-    kind: "poly_speed_to_power"
+    # 1) vitesse -> force (polynôme)
+  - id: "resistance_from_speed"
+    kind: "speed_to_force_poly"
     source: "speed"
     unit_in: "m/s"                    # l’adapter attend m/s
-    unit_out: "W"                     # et produit des W
+    unit_out: "N"                     # et produit des Newton
     params:
       coeffs: [0.0, 100.0, 0.0, 5.0]  # exemple ([a0, a1, a2] -> P = a0 + a1*v + a2*v^2)
+    
+    # 2) puissance = F * v (multi-entrées)
+  - id: "shaft_power_from_Fv"
+    kind: "force_and_speed_to_power"
+    # NB: 'source' top-level est ignoré par cet adapter (il utilise 2 sources dans params)
+    source: ""  # (juste pour satisfaire le schéma générique)
+    unit_in: "" # idem
+    unit_out: "W"
+    params:
+      force_source: "resistance_from_speed"
+      speed_source: "speed"
+      force_unit_in: "N"
+      speed_unit_in: "m/s"
+      unit_out: "W"
+    
+    # 3) vitesse -> puissance (polynôme)
+  - id: "shaft_power_from_speed"
+    kind: "speed_to_power_poly"
+    source: "speed"
+    unit_in: "m/s"                    # l’adapter attend m/s
+    unit_out: "W"                     # et produit des Watts
+    params:
+      coeffs: [0.0, 100.0, 0.0, 5.0]
 
 inputs:
   - id: "shaft_demand"
     bus: "Mechanical:shaft"
-    source: "shaft_power_from_speed"  # via l’adapter (clé ignorée par le solver, utilisé par Vessel)
+    source: "shaft_power_from_Fv"  # via l’adapter (clé ignorée par le solver, utilisé par Vessel)
 
   - id: "navops"
     bus: "Electrical:main"
