@@ -22,23 +22,15 @@ class ProfileCfg(BaseModel):
     data: list[float] | None = None
     file: StrictStr | None = None
 
-# adapters (discriminated union)
-class PolyAdapterCfg(BaseModel):
+# adapters
+class AdapterCfg(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
-    kind: Literal["poly"]
+    kind: StrictStr
     source: StrictStr
     unit_in: StrictStr
     unit_out: StrictStr
-    params: dict[str, Any]
-    @field_validator("params")
-    @classmethod
-    def check_poly(cls, v):
-        if "coeffs" not in v or not isinstance(v["coeffs"], list):
-            raise ValueError("params.coeffs requis (liste)")
-        return v
-
-AdapterCfg = Annotated[Union[PolyAdapterCfg], Field(discriminator="kind")]
+    params: dict[str, Any] = Field(default_factory=dict)
 
 # bindings input->bus
 class InputBindCfg(BaseModel):

@@ -145,7 +145,7 @@ if __name__ == "__main__":
     
     adapters:
       - id: "shaft_power_from_speed"
-        kind: "poly"
+        kind: "poly_speed_to_power"
         source: "speed"
         unit_in: "m/s"            # l’adapter attend m/s
         unit_out: "W"             # et produit des W
