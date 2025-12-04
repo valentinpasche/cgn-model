@@ -1,0 +1,39 @@
+port_1;port_2;length;source
+Nernier;Nyon;4.824490232;TLM
+Lausanne;St-Gingolph;18.54998246;TLM
+Chateau de Chillon;Villeneuve;1.635898531;TLM
+Coppet;Versoix;4.603144049;TLM
+Rivaz - St-Saphorin;Vevey Marche;4.745364675;TLM
+Coppet;Nyon;8.647613703;TLM
+Montreux;Vevey Marche;6.239292613;TLM
+Le Bouveret;Villeneuve;6.525944202;TLM
+Rolle;St-Prex;10.54627573;TLM
+St-Prex;Yvoire;16.33850074;OSM
+Geneve Eaux-Vives;Versoix;8.277503131;TLM
+Lausanne;Montreux;23.4472367;TLM
+Rolle;Yvoire;9.576670433;TLM
+Nernier;Yvoire;1.992517466;TLM
+Clarens;Vevey- La Tour;4.776074592;TLM
+Coppet;Yvoire;12.84056389;OSM
+Morges;St-Sulpice;5.106836388;TLM
+Celigny;Nyon;4.814957328;TLM
+Chateau de Chillon;Territet;1.817509357;TLM
+Celigny;Coppet;4.1607863;TLM
+Le Bouveret;St-Gingolph;3.818161799;TLM
+Lausanne;Vevey Marche;17.36612569;OSM
+Chateau de Chillon;Montreux;4.005145278;TLM
+Cully;Vevey Marche;9.296552827;TLM
+Cully;Lutry;5.532398474;TLM
+Lausanne;St-Sulpice;5.704948286;TLM
+Lutry;Pully;1.868487919;TLM
+Coppet;Nernier;10.82702646;OSM
+St-Gingolph;Vevey Marche;7.638880808;TLM
+Nyon;Yvoire;6.292192702;TLM
+Lausanne;Pully;2.554467758;TLM
+Vevey Marche;Vevey- La Tour;0.838310182;TLM
+Clarens;Montreux;0.990885709;TLM
+Morges;St-Prex;4.798455152;TLM
+Montreux;Territet;1.895023498;TLM
+Cully;Rivaz - St-Saphorin;4.410759833;TLM
+Geneve Mont-Blanc;Versoix;8.491784751;TLM
+Geneve Eaux-Vives;Geneve Mont-Blanc;1.010891584;TLM
