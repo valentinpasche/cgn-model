@@ -1,0 +1,39 @@
+croisiere;course;port;horaire;km;minutes
+Petit-Lac - Grand-Lac;102;Geneve Mont-Blanc;10h45;1;9
+;;Geneve Eaux-Vives;10h54;8;24
+;;Versoix;11h18;4;15
+;;Coppet;11h33;4;15
+;;Celigny;11h48;5;12
+;;Nyon;12h00;0;5
+;;Nyon;12h05;7;20
+;;Yvoire;12h25;0;10
+;;Yvoire;12h35;10;30
+;;Rolle;13h05;11;30
+;;St-Prex;13h35;4;15
+;;Morges;13h50;6;15
+;;St-Sulpice;14h05;5;23
+;;Lausanne;14h28;0;12
+;105;Lausanne;14h40;5;20
+;;St-Sulpice;15h00;6;18
+;;Morges;15h18;4;15
+;;St-Prex;15h33;11;30
+;;Rolle;16h03;10;30
+;;Yvoire;16h33;0;7
+;;Yvoire;16h40;7;20
+;;Nyon;17h00;0;5
+;;Nyon;17h05;5;15
+;;Celigny;17h20;4;15
+;;Coppet;17h35;4;15
+;;Versoix;17h50;9;30
+;;Geneve Eaux-Vives;18h20;1;10
+;;Geneve Mont-Blanc;18h30;0;30
+;388;Geneve Mont-Blanc;19h00;10;38
+;;Versoix;19h38;4;15
+;;Coppet;19h53;12;37
+;;Yvoire;20h30;0;5
+;389;Yvoire;20h35;7;20
+;;Nyon;20h55;0;0
+;;Nyon;20h55;9;30
+;;Coppet;21h25;4;15
+;;Versoix;21h40;10;40
+;;Geneve Mont-Blanc;22h20;;

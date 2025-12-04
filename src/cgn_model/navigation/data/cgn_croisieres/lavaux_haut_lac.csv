@@ -1,0 +1,35 @@
+croisiere;course;port;horaire;km;minutes
+Lavaux - Haut-Lac;900;Lausanne;09h05;23;63
+;;Montreux;10h08;0;2
+;903;Montreux;10h10;7;20
+;;Vevey Marche;10h30;0;2
+;;Vevey Marche;10h32;9;33
+;;Cully;11h05;4;15
+;;Lutry;11h20;2;8
+;;Pully;11h28;3;12
+;;Lausanne;11h40;0;15
+;202;Lausanne;11h55;19;55
+;;St-Gingolph;12h50;0;0
+;905;St-Gingolph;12h50;4;13
+;;Le Bouveret;13h03;8;22
+;;Villeneuve;13h25;1;10
+;;Chateau de Chillon;13h35;3;10
+;;Montreux;13h45;0;3
+;;Montreux;13h48;7;20
+;;Vevey Marche;14h08;0;2
+;;Vevey Marche;14h10;9;30
+;;Cully;14h40;4;15
+;;Lutry;14h55;2;8
+;;Pully;15h03;3;12
+;;Lausanne;15h15;0;15
+;206;Lausanne;15h30;19;55
+;;St-Gingolph;16h25;0;0
+;207;St-Gingolph;16h25;4;13
+;;Le Bouveret;16h38;8;22
+;;Villeneuve;17h00;1;10
+;;Chateau de Chillon;17h10;3;10
+;;Montreux;17h20;0;3
+;;Montreux;17h23;7;20
+;;Vevey Marche;17h43;0;2
+;;Vevey Marche;17h45;18;45
+;;Lausanne;18h30;;

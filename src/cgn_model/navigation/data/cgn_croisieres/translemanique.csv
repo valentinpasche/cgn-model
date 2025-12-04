@@ -1,0 +1,33 @@
+croisiere;course;port;horaire;km;minutes
+translemanique;101;Lausanne;10h55;5;20
+;;St-Sulpice;11h15;6;18
+;;Morges;11h33;4;15
+;;St-Prex;11h48;11;30
+;;Rolle;12h18;10;30
+;;Yvoire;12h48;0;7
+;;Yvoire;12h55;2;7
+;;Nernier;13h02;5;16
+;;Nyon;13h18;0;2
+;;Nyon;13h20;9;25
+;;Coppet;13h45;4;15
+;;Versoix;14h00;9;25
+;;Geneve Eaux-Vives;14h25;1;10
+;;Geneve Mont-Blanc;14h35;0;10
+;106;Geneve Mont-Blanc;14h45;1;9
+;;Geneve Eaux-Vives;14h54;8;24
+;;Versoix;15h18;4;15
+;;Coppet;15h33;9;27
+;;Nernier;16h00;2;12
+;;Yvoire;16h12;0;8
+;;Yvoire;16h20;10;30
+;;Rolle;16h50;11;30
+;;St-Prex;17h20;4;15
+;;Morges;17h35;6;15
+;;St-Sulpice;17h50;5;20
+;;Lausanne;18h10;0;10
+;982;Lausanne;18h20;18;48
+;;Vevey Marche;19h08;0;2
+;;Vevey Marche;19h10;7;20
+;;Montreux;19h30;0;2
+;983;Montreux;19h32;23;63
+;;Lausanne;20h35;;

@@ -1,0 +1,54 @@
+croisiere;course;port;horaire;km;minutes
+Lavaux - Haut-Lac - Grand-Lac;904;Lausanne;10h20;3;10
+;;Pully;10h30;2;8
+;;Lutry;10h38;4;15
+;;Cully;10h53;5;17
+;;Rivaz - St-Saphorin;11h10;5;15
+;;Vevey Marche;11h25;0;5
+;;Vevey Marche;11h30;1;5
+;;Vevey- La Tour;11h35;4;15
+;;Clarens;11h50;2;7
+;;Montreux;11h57;0;8
+;;Montreux;12h05;1;7
+;;Territet;12h12;2;8
+;;Chateau de Chillon;12h20;1;8
+;;Villeneuve;12h28;8;22
+;;Le Bouveret;12h50;4;13
+;;St-Gingolph;13h03;0;0
+;505;St-Gingolph;13h03;8;22
+;;Vevey Marche;13h25;0;5
+;506;Vevey Marche;13h30;7;27
+;;Montreux;13h57;0;8
+;;Montreux;14h05;1;7
+;;Territet;14h12;2;8
+;;Chateau de Chillon;14h20;1;8
+;;Villeneuve;14h28;8;22
+;;Le Bouveret;14h50;4;13
+;;St-Gingolph;15h03;0;0
+;507;St-Gingolph;15h03;8;22
+;;Vevey Marche;15h25;0;5
+;508;Vevey Marche;15h30;1;5
+;;Vevey- La Tour;15h35;4;15
+;;Clarens;15h50;2;7
+;;Montreux;15h57;0;8
+;;Montreux;16h05;1;7
+;;Territet;16h12;2;8
+;;Chateau de Chillon;16h20;1;8
+;;Villeneuve;16h28;8;22
+;;Le Bouveret;16h50;4;13
+;;St-Gingolph;17h03;0;0
+;509;St-Gingolph;17h03;8;22
+;;Vevey Marche;17h25;0;0
+;9509;Vevey Marche;17h25;18;50
+;;Lausanne;18h15;0;40
+;487;Lausanne;18h55;5;20
+;;St-Sulpice;19h15;6;18
+;;Morges;19h33;4;15
+;;St-Prex;19h48;16;44
+;;Yvoire;20h32;0;3
+;488;Yvoire;20h35;10;30
+;;Rolle;21h05;11;30
+;;St-Prex;21h35;4;15
+;;Morges;21h50;6;15
+;;St-Sulpice;22h05;5;20
+;;Lausanne;22h25;;

@@ -1,0 +1,161 @@
+croisiere;course;port;horaire;km;minutes
+translemanique;101;Lausanne;10h55;5;20
+;;St-Sulpice;11h15;6;18
+;;Morges;11h33;4;15
+;;St-Prex;11h48;11;30
+;;Rolle;12h18;10;30
+;;Yvoire;12h48;0;7
+;;Yvoire;12h55;2;7
+;;Nernier;13h02;5;16
+;;Nyon;13h18;0;2
+;;Nyon;13h20;9;25
+;;Coppet;13h45;4;15
+;;Versoix;14h00;9;25
+;;Geneve Eaux-Vives;14h25;1;10
+;;Geneve Mont-Blanc;14h35;0;10
+;106;Geneve Mont-Blanc;14h45;1;9
+;;Geneve Eaux-Vives;14h54;8;24
+;;Versoix;15h18;4;15
+;;Coppet;15h33;9;27
+;;Nernier;16h00;2;12
+;;Yvoire;16h12;0;8
+;;Yvoire;16h20;10;30
+;;Rolle;16h50;11;30
+;;St-Prex;17h20;4;15
+;;Morges;17h35;6;15
+;;St-Sulpice;17h50;5;20
+;;Lausanne;18h10;0;10
+;982;Lausanne;18h20;18;48
+;;Vevey Marche;19h08;0;2
+;;Vevey Marche;19h10;7;20
+;;Montreux;19h30;0;2
+;983;Montreux;19h32;23;63
+;;Lausanne;20h35;;
+;;;;;
+Petit-Lac - Grand-Lac;102;Geneve Mont-Blanc;10h45;1;9
+;;Geneve Eaux-Vives;10h54;8;24
+;;Versoix;11h18;4;15
+;;Coppet;11h33;4;15
+;;Celigny;11h48;5;12
+;;Nyon;12h00;0;5
+;;Nyon;12h05;7;20
+;;Yvoire;12h25;0;10
+;;Yvoire;12h35;10;30
+;;Rolle;13h05;11;30
+;;St-Prex;13h35;4;15
+;;Morges;13h50;6;15
+;;St-Sulpice;14h05;5;23
+;;Lausanne;14h28;0;12
+;105;Lausanne;14h40;5;20
+;;St-Sulpice;15h00;6;18
+;;Morges;15h18;4;15
+;;St-Prex;15h33;11;30
+;;Rolle;16h03;10;30
+;;Yvoire;16h33;0;7
+;;Yvoire;16h40;7;20
+;;Nyon;17h00;0;5
+;;Nyon;17h05;5;15
+;;Celigny;17h20;4;15
+;;Coppet;17h35;4;15
+;;Versoix;17h50;9;30
+;;Geneve Eaux-Vives;18h20;1;10
+;;Geneve Mont-Blanc;18h30;0;30
+;388;Geneve Mont-Blanc;19h00;10;38
+;;Versoix;19h38;4;15
+;;Coppet;19h53;12;37
+;;Yvoire;20h30;0;5
+;389;Yvoire;20h35;7;20
+;;Nyon;20h55;0;0
+;;Nyon;20h55;9;30
+;;Coppet;21h25;4;15
+;;Versoix;21h40;10;40
+;;Geneve Mont-Blanc;22h20;;
+;;;;;
+Lavaux - Haut-Lac;900;Lausanne;09h05;23;63
+;;Montreux;10h08;0;2
+;903;Montreux;10h10;7;20
+;;Vevey Marche;10h30;0;2
+;;Vevey Marche;10h32;9;33
+;;Cully;11h05;4;15
+;;Lutry;11h20;2;8
+;;Pully;11h28;3;12
+;;Lausanne;11h40;0;15
+;202;Lausanne;11h55;19;55
+;;St-Gingolph;12h50;0;0
+;905;St-Gingolph;12h50;4;13
+;;Le Bouveret;13h03;8;22
+;;Villeneuve;13h25;1;10
+;;Chateau de Chillon;13h35;3;10
+;;Montreux;13h45;0;3
+;;Montreux;13h48;7;20
+;;Vevey Marche;14h08;0;2
+;;Vevey Marche;14h10;9;30
+;;Cully;14h40;4;15
+;;Lutry;14h55;2;8
+;;Pully;15h03;3;12
+;;Lausanne;15h15;0;15
+;206;Lausanne;15h30;19;55
+;;St-Gingolph;16h25;0;0
+;207;St-Gingolph;16h25;4;13
+;;Le Bouveret;16h38;8;22
+;;Villeneuve;17h00;1;10
+;;Chateau de Chillon;17h10;3;10
+;;Montreux;17h20;0;3
+;;Montreux;17h23;7;20
+;;Vevey Marche;17h43;0;2
+;;Vevey Marche;17h45;18;45
+;;Lausanne;18h30;;
+;;;;;
+Lavaux - Haut-Lac - Grand-Lac;904;Lausanne;10h20;3;10
+;;Pully;10h30;2;8
+;;Lutry;10h38;4;15
+;;Cully;10h53;5;17
+;;Rivaz - St-Saphorin;11h10;5;15
+;;Vevey Marche;11h25;0;5
+;;Vevey Marche;11h30;1;5
+;;Vevey- La Tour;11h35;4;15
+;;Clarens;11h50;2;7
+;;Montreux;11h57;0;8
+;;Montreux;12h05;1;7
+;;Territet;12h12;2;8
+;;Chateau de Chillon;12h20;1;8
+;;Villeneuve;12h28;8;22
+;;Le Bouveret;12h50;4;13
+;;St-Gingolph;13h03;0;0
+;505;St-Gingolph;13h03;8;22
+;;Vevey Marche;13h25;0;5
+;506;Vevey Marche;13h30;7;27
+;;Montreux;13h57;0;8
+;;Montreux;14h05;1;7
+;;Territet;14h12;2;8
+;;Chateau de Chillon;14h20;1;8
+;;Villeneuve;14h28;8;22
+;;Le Bouveret;14h50;4;13
+;;St-Gingolph;15h03;0;0
+;507;St-Gingolph;15h03;8;22
+;;Vevey Marche;15h25;0;5
+;508;Vevey Marche;15h30;1;5
+;;Vevey- La Tour;15h35;4;15
+;;Clarens;15h50;2;7
+;;Montreux;15h57;0;8
+;;Montreux;16h05;1;7
+;;Territet;16h12;2;8
+;;Chateau de Chillon;16h20;1;8
+;;Villeneuve;16h28;8;22
+;;Le Bouveret;16h50;4;13
+;;St-Gingolph;17h03;0;0
+;509;St-Gingolph;17h03;8;22
+;;Vevey Marche;17h25;0;0
+;9509;Vevey Marche;17h25;18;50
+;;Lausanne;18h15;0;40
+;487;Lausanne;18h55;5;20
+;;St-Sulpice;19h15;6;18
+;;Morges;19h33;4;15
+;;St-Prex;19h48;16;44
+;;Yvoire;20h32;0;3
+;488;Yvoire;20h35;10;30
+;;Rolle;21h05;11;30
+;;St-Prex;21h35;4;15
+;;Morges;21h50;6;15
+;;St-Sulpice;22h05;5;20
+;;Lausanne;22h25;;
