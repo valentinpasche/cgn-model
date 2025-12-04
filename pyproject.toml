@@ -20,6 +20,9 @@ where = ["src"]
 include = ["cgn_model*"]
 exclude = ["tests*", "docs*", "examples*", "build*", "dist*"]
 
+[tool.setuptools.package-data]
+"cgn_model.navigation" = ["data/cgn_croisieres/*.csv"]
+
 [project.urls]
 Repository = "https://github.com/valentinpasche/cgn-model"
 
