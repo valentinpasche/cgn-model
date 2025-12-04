@@ -30,8 +30,7 @@ class SpeedProfileParams:
     dec: float = 0.04                # [m/s²]
     v_croisiere: float = 25 / 3.6    # [m/s]
     v_moyenne_horaire: float | None = 23 / 3.6  # [m/s], optionnel
-    km_tml: bool = False
-    allow_delay: bool = False
+    allow_delay: bool = True
 
 @dataclass
 class Etape:
@@ -41,7 +40,7 @@ class Etape:
     km: float
     minutes: float
     profile: np.ndarray = None
-    km_tlm: float = None
+    retard: float | None = None   # retard cumulé après cette étape [s]
 
     @property
     def is_pause(self) -> bool:
@@ -88,25 +87,12 @@ class Etape:
             f"km={self.km!r}, "
             f"minutes={self.minutes!r})"
         )
-    
-    def add_km_tlm(self, tlm_dict: dict) -> Etape:
-        if self.is_pause:
-            self.km_tlm = float(0)
-        else:
-            for v in tlm_dict.values():
-                if not v["port_1"] == self.from_port:
-                    continue
-                else:
-                    if not v["port_2"] == self.to_port:
-                        continue
-                    else:
-                        self.km_tlm = v["length"]
-                        return
 
     def speed_profile(
         self,
         params: SpeedProfileParams | None = None,
-    ) -> np.ndarray:
+        n_dt_delay: int | None = None,
+    ) -> tuple[np.ndarray, int | None]:
         """
         Retourne un profil de vitesse v(t) pour cette étape, discrétisé toutes dt secondes.
 
@@ -123,12 +109,36 @@ class Etape:
               - allow_delay=False → ValueError
               - allow_delay=True  → on utilise T_phys, et donc on arrive en retard.
         """
+        def _catch_n_delay(n_current: int, n_delay: int) -> tuple[int, int, int]:
+            " Reprise du retard possible "
+            if n_delay == 0:
+                return (n_current, n_delay, 0)
+            # Garder une pause de 1*dt, si pause = delay
+            if n_current == n_delay:
+                n_removed = n_delay - 1
+                n_current -= n_removed
+                n_delay -= n_removed
+            # Tout rattraper dans cette pause
+            elif n_current > n_delay:
+                n_removed = n_delay
+                n_current -= n_removed
+                n_delay = 0
+            # Pas assez de pause pour tout rattraper
+            elif n_current < n_delay:
+                n_removed = max(0, n_current % n_delay) - 1
+                n_current -= n_removed
+                n_delay -= n_removed
+            else:
+                raise ValueError("[DEV] Erreur dans l'execution, level=_catch_n_delay()")
+            
+            return (n_current, n_delay, n_removed)
+        
         if params is None:
             params = SpeedProfileParams()
-        
         if not isinstance(params, SpeedProfileParams):
             raise TypeError("La méthode prend en entrée une instance de `SpeedProfilParams`,"
-                        "    defaut None et crée l'instance avec les paramètres par défaut.")
+                        "    defaut None et crée l'instance avec les paramètres par défaut."
+            )
         
         dt = params.dt
         acc = params.acc
@@ -137,18 +147,34 @@ class Etape:
         v_moyenne_horaire = params.v_moyenne_horaire
         allow_delay = params.allow_delay
         
-        if params.km_tml:
-            km = self.km_tlm
-        else: km = self.km
-
+        if not allow_delay:
+            n_current_delay = None
+        elif isinstance(n_dt_delay, int) and n_dt_delay > 0:
+            n_current_delay = n_dt_delay
+        elif not n_dt_delay:
+            n_current_delay = 0
+        else:
+            raise ValueError("[DEV] Erreur dans l'execution, level=Etape()")
+        
         # 0) cas pause : que des zéros
         t_sched = float(self.minutes) * 60.0  # [s]
-        if self.is_pause or km <= 0:
+        if self.is_pause or self.km <= 0:
             n = max(0, int(round(t_sched / dt)))
-            return np.zeros(n, dtype=float)
+            
+            #) Reprise du retard possible
+            if n_current_delay:
+                n, n_current_delay, n_removed = _catch_n_delay(n, n_current_delay)
+                if n_removed:
+                    warnings.warn(
+                        f"[Correction] Pause à {self.from_port} : "
+                        f"{float(n_removed * dt):.1f} s ont été supprimées pour tenir l'horaire.",
+                        RuntimeWarning,
+                    )
 
+            return np.zeros(n, dtype=float), n_current_delay
+        
         # 1) données de base
-        distance_m = float(km) * 1000.0  # [m]
+        distance_m = float(self.km) * 1000.0  # [m]
         a = float(acc)
         d = float(dec)
         v_max = float(v_croisiere)
@@ -174,7 +200,9 @@ class Etape:
             T_phys = t_a + t_d
 
         # 3) Comparaison avec l'horaire
-        if t_sched < T_phys:
+        if T_phys <= t_sched:
+            catch_delay = True
+        else:
             # Horaire physiquement impossible avec ces paramètres
             if not allow_delay:
                 raise ValueError(
@@ -183,7 +211,11 @@ class Etape:
                     f"{distance_m / T_phys * 3.6:.1f} km/h) > temps d'horaire {t_sched:.1f}s"
                 )
             else:
+                catch_delay = False
                 delay = T_phys - t_sched
+                self.retard = delay
+                new_n_delay = int(round(delay / dt))
+                n_current_delay += new_n_delay
                 warnings.warn(
                     f"[Retard] {self.from_port} -> {self.to_port} : "
                     f"il manque {delay:.1f} s pour tenir l'horaire.",
@@ -218,7 +250,19 @@ class Etape:
         # 5) On ajoute les périodes à vitesse nulle au début et à la fin
         n_before = int(round(slack_before / dt))
         n_after = int(round(slack_after / dt))
-
+        
+        #) Reprise du retard possible
+        if catch_delay and n_current_delay:
+            n_before, n_current_delay, n_removed_b = _catch_n_delay(n_before, n_current_delay)
+            n_after, n_current_delay, n_removed_a = _catch_n_delay(n_after, n_current_delay)
+            n_removed = n_removed_b + n_removed_a
+            if n_removed:
+                warnings.warn(
+                    f"[Correction] Sur {self.from_port} -> {self.to_port} : "
+                    f"{float(n_removed * dt):.1f} s ont été supprimées pour tenir l'horaire.",
+                    RuntimeWarning,
+                )
+        
         if n_before > 0:
             v = np.concatenate([np.zeros(n_before, dtype=float), v])
         if n_after > 0:
@@ -244,13 +288,14 @@ class Etape:
                 )
         
         self.profile = v
-        return self.profile
+        return self.profile, n_current_delay
 
 @dataclass
 class Course:
     numero: int
     etapes: list[Etape]
     profile: np.ndarray | None = None
+    retard: float | None = None   # retard cumulé final [s]
 
     @property
     def from_port(self) -> str:
@@ -313,12 +358,11 @@ class Course:
             "        ])"
         )
     
-    def add_km_tlm(self, tlm_dict: dict) -> Course:
-        for etape in self.etapes:
-            etape.add_km_tlm(tlm_dict)
-        return
-    
-    def speed_profile(self, params: SpeedProfileParams | None = None) -> np.ndarray:
+    def speed_profile(
+            self,
+            params: SpeedProfileParams | None = None,
+            n_dt_delay: int | None = None,
+    ) -> tuple[np.ndarray, int | None]:
         """
         Construit et stocke le profil de vitesse de la course en concaténant
         les profils de toutes ses étapes (y compris pauses internes).
@@ -326,17 +370,42 @@ class Course:
         Les kwargs sont passés tels quels à Etape.speed_profile, donc les
         valeurs par défaut ne sont définies qu'à un seul endroit.
         """
+        if params is None:
+            params = SpeedProfileParams()
+        if not isinstance(params, SpeedProfileParams):
+            raise TypeError("La méthode prend en entrée une instance de `SpeedProfilParams`,"
+                        "    defaut None et crée l'instance avec les paramètres par défaut."
+            )
+        
         profiles: list[np.ndarray] = []
+        
+        if not params.allow_delay:
+            n_current_delay = None
+        elif isinstance(n_dt_delay, int) and n_dt_delay > 0:
+            n_current_delay = n_dt_delay
+        elif not n_dt_delay:
+            n_current_delay = 0
+        else:
+            raise ValueError("[DEV] Erreur dans l'execution, level=Course()")
+        
         for etape in self.etapes:
-            v = etape.speed_profile(params=params)
+            v, n_current_delay = etape.speed_profile(params=params, n_dt_delay=n_current_delay)
             profiles.append(v)
 
         if profiles:
             self.profile = np.concatenate(profiles)
         else:
             self.profile = np.zeros(0, dtype=float)
-
-        return self.profile
+            
+        if n_current_delay:
+            self.retard = n_current_delay * params.dt           
+            warnings.warn(
+                f"[Retard] Course {self.numero} : "
+                f"il manque {self.retard} s pour tenir l'horaire.",
+                RuntimeWarning,
+            )
+            
+        return self.profile, n_current_delay
 
 
 @dataclass
@@ -345,6 +414,7 @@ class Croisiere:
     courses: list[Course]
     pauses: list[Etape] # pauses entre les courses (km == 0 et changement de n° de course)
     profile: np.ndarray | None = None
+    retard: float | None = None   # somme des retards des courses [s]
 
     @property
     def from_port(self) -> str:
@@ -573,15 +643,10 @@ class Croisiere:
                 return False
         return True
 
-    def add_km_tlm(self, tlm_dict: dict) -> Croisiere:
-        for seg in self.trajet:  # trajet = mix Course / Etape
-            if isinstance(seg, Course):
-                seg.add_km_tlm(tlm_dict)
-            else:  # Etape de pause entre courses
-                seg.add_km_tlm(tlm_dict)
-        return
-
-    def speed_profile(self, params: SpeedProfileParams | None = None) -> np.ndarray:
+    def speed_profile(
+            self,
+            params: SpeedProfileParams | None = None,
+    ) -> tuple[np.ndarray, int | None]:
         """
         Construit et stocke le profil complet de la croisière, en concaténant :
         - le profil de chaque Course
@@ -589,13 +654,25 @@ class Croisiere:
 
         Les kwargs sont passés tels quels à Course.speed_profile / Etape.speed_profile.
         """
+        if params is None:
+            params = SpeedProfileParams()
+        if not isinstance(params, SpeedProfileParams):
+            raise TypeError("La méthode prend en entrée une instance de `SpeedProfilParams`,"
+                        "    defaut None et crée l'instance avec les paramètres par défaut."
+            )
+        
         segments_profiles: list[np.ndarray] = []
+        
+        if not params.allow_delay:
+            n_current_delay = None
+        else:
+            n_current_delay = 0
 
         for seg in self.trajet:  # trajet = mix Course / Etape
             if isinstance(seg, Course):
-                v = seg.speed_profile(params=params)
+                v, n_current_delay = seg.speed_profile(params=params, n_dt_delay=n_current_delay)
             else:  # Etape de pause entre courses
-                v = seg.speed_profile(params=params)
+                v, n_current_delay = seg.speed_profile(params=params, n_dt_delay=n_current_delay)
             segments_profiles.append(v)
 
         if segments_profiles:
@@ -603,14 +680,22 @@ class Croisiere:
         else:
             self.profile = np.zeros(0, dtype=float)
 
-        return self.profile
+        if n_current_delay:
+            self.retard = n_current_delay * params.dt
+            warnings.warn(
+                f"[Retard] Croisière {self.nom} : "
+                f"il manque {self.retard} s pour tenir l'horaire.",
+                RuntimeWarning,
+            )
+
+        return self.profile, n_current_delay
 
 
 if __name__ == "__main__":
     
     # import matplotlib.pyplot as plt
 
-    croisieres = Croisiere.from_csv("assets/croisieres/all.csv")
+    croisieres = Croisiere.from_csv("all.csv")
     
     # # ---- Test continuité + __repr__
     # for c in croisieres:
