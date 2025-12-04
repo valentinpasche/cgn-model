@@ -1,6 +1,31 @@
 # CGN - Modèle de simulation chaîne énergétique
 
-Objectifs - à faire
+---
+
+## 🔧 Installation
+
+### Via le fichier `environment.yml` (à privilégier, essentiellement)
+
+```bash
+conda env create -f environment.yml
+conda activate cgnmodel
+python -c "import cgn_model; print('OK:', cgn_model.__name__, 'version:', getattr(cgn_model, '__version__', '?'))"
+```
+
+## ▶️ Utilisation classique, via Spyder
+
+Lancer l'application spyder depuis l'environnement **cgnmodel**
+
+```bash
+conda activate cgnmodel
+spyder
+```
+
+Ou directement l'application de bureau : *Spyder 6 (cgnmodel)*
+
+---
+
+### *Objectifs - à faire*
 
 ## Inputs Romain - 26.11.2025
 
