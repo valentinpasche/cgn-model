@@ -15,6 +15,51 @@ import pandas as pd
 __all__ = ["Etape", "Course", "Croisiere", "SpeedProfileParams"]
 
 
+def format_profile_summary(profile: np.ndarray | None, values: bool = False) -> str:
+    """
+    Représentation compacte d'un profil numpy 1D pour les __repr__.
+
+    Exemple :
+      array([0.0, 0.0, 0.1, ..., 1.2, 0.8, 0.0],
+            shape=(34800,), mean=0.45, max=1.23, nonzero=32.1%)
+    """
+    if profile is None:
+        return "None"
+
+    arr = np.asarray(profile).ravel()
+    n = arr.size
+
+    if values:
+        # --- partie "contenu" tronquée ---
+        if n == 0:
+            inner = ""
+        elif n <= 6:
+            inner = ", ".join(str(round(x,2)) for x in arr)
+        else:
+            head = ", ".join(str(round(x,2)) for x in arr[:3])
+            tail = ", ".join(str(round(x,2)) for x in arr[-3:])
+            inner = f"{head}, ..., {tail}"
+    else:
+        # --- overide de inner pour avoir que les stats ---
+        inner = "..."
+    
+    # --- stats simples ---
+    mean = float(arr.mean())
+    vmax = float(arr.max())
+    # fraction de points non nuls (utile pour voir nav vs pause)
+    nonzero_frac = float((arr != 0).mean()) if n > 0 else 0.0
+
+    return (
+        "array(["
+        f"{inner}"
+        "], "
+        f"shape=({n},), "
+        f"mean={mean:.3g}, "
+        f"max={vmax:.3g}, "
+        f"nonzero={nonzero_frac*100:.1f}%)"
+        ")"
+    )
+
 def _cgn_croisiere_csv_path(filename: str) -> Path:
     # -> src/cgn_model/navigation/data/cgn_croisieres/<filename>
     return (
@@ -22,14 +67,13 @@ def _cgn_croisiere_csv_path(filename: str) -> Path:
         .joinpath("data", "cgn_croisieres", filename)
     )
 
-
 @dataclass(slots=True)
 class SpeedProfileParams:
     dt: float = 1.0                  # [s]
     acc: float = 0.04                # [m/s²]
     dec: float = 0.04                # [m/s²]
     v_croisiere: float = 25 / 3.6    # [m/s]
-    v_moyenne_horaire: float | None = 23 / 3.6  # [m/s], optionnel
+    v_moyenne_horaire: float | None = None  # [m/s], optionnel, e.g. `23 / 3.6`
     allow_delay: bool = True
 
 @dataclass
@@ -46,38 +90,31 @@ class Etape:
     def is_pause(self) -> bool:
         # Pause = pas de déplacement
         return self.km == 0
-    
+
     @property
     def nav_minutes(self) -> float:
         """Minutes réellement en navigation (0 si pause)."""
         return 0.0 if self.is_pause else float(self.minutes)
-    
+
     @property
     def pause_minutes(self) -> float:
         """Minutes à quai (0 si déplacement)."""
         return float(self.minutes) if self.is_pause else 0.0
-    
+
     @property
     def arrival(self) -> dt.time:
         """Heure d'arrivée (naïve, même jour)."""
         base = dt.datetime.combine(dt.date(2000, 1, 1), self.depart)
         arr = base + dt.timedelta(minutes=float(self.minutes))
         return arr.time()
-    
-    def to_pretty_str(self, indent: int = 0) -> str:
-        pad = " " * indent
-        # depart est un datetime.time chez toi
-        t = self.depart.strftime("%H:%M") if hasattr(self.depart, "strftime") else self.depart
-
-        if self.is_pause:
-            return f"{pad}Pause {t} {self.from_port} -> {self.to_port} ({self.minutes:g} min)"
-        else:
-            return (
-                f"{pad}- {t} {self.from_port} -> {self.to_port} "
-                f"({self.minutes:g} min, {self.km:g} km)"
-            )
 
     def __repr__(self) -> str:
+        profile_repr = format_profile_summary(self.profile, values=True)
+        base = self._repr_without_profile()[:-1]
+        base += f", profile={profile_repr})"
+        return base
+
+    def _repr_without_profile(self) -> str:
         return (
             "Etape("
             f"from_port={self.from_port!r}, "
@@ -87,6 +124,19 @@ class Etape:
             f"km={self.km!r}, "
             f"minutes={self.minutes!r})"
         )
+
+    def to_pretty_str(self, indent: int = 0) -> str:
+        pad = " " * indent
+        # depart est un datetime.time chez toi
+        t = self.depart.strftime("%H:%M") if hasattr(self.depart, "strftime") else self.depart
+        
+        if self.is_pause:
+            return f"{pad}Pause {t} {self.from_port} -> {self.to_port} ({self.minutes:g} min)"
+        else:
+            return (
+                f"{pad}- {t} {self.from_port} -> {self.to_port} "
+                f"({self.minutes:g} min, {self.km:g} km)"
+            )
 
     def speed_profile(
         self,
@@ -335,7 +385,27 @@ class Course:
         if self.nav_minutes == 0:
             return 0.0
         return self.total_km / (self.nav_minutes / 60.0)
-    
+
+    def __repr__(self) -> str:
+        if not self.etapes:
+            return f"Course(numero={self.numero!r}, etapes=[])"
+        
+        profile_repr = format_profile_summary(self.profile, values=False)
+        etapes_repr = ",\n            ".join(
+            e._repr_without_profile() for e in self.etapes
+        )
+        return (
+            "Course("
+            f"numero={self.numero!r}, "
+            f"from_port={self.from_port!r}, "
+            f"to_port={self.to_port!r}, "
+            f"n_etapes={len(self.etapes)}, "
+            f"profile={profile_repr}), "
+            "etapes=[\n"
+            f"            {etapes_repr}\n"
+            "        ])"
+        )
+
     def to_pretty_str(self, indent: int = 0) -> str:
         pad = " " * indent
         lines = [f"{pad}Course {self.numero} {self.from_port} -> {self.to_port}"]
@@ -343,21 +413,6 @@ class Course:
             lines.append(e.to_pretty_str(indent=indent + 4))
         return "\n".join(lines)
 
-    def __repr__(self) -> str:
-        if not self.etapes:
-            return f"Course(numero={self.numero!r}, etapes=[])"
-
-        etapes_repr = ",\n            ".join(repr(e) for e in self.etapes)
-        return (
-            "Course("
-            f"numero={self.numero!r}, "
-            f"from_port={self.from_port!r}, "
-            f"to_port={self.to_port!r}, "
-            "etapes=[\n"
-            f"            {etapes_repr}\n"
-            "        ])"
-        )
-    
     def speed_profile(
             self,
             params: SpeedProfileParams | None = None,
@@ -407,7 +462,6 @@ class Course:
             
         return self.profile, n_current_delay
 
-
 @dataclass
 class Croisiere:
     nom: str
@@ -423,7 +477,7 @@ class Croisiere:
     @property
     def to_port(self) -> str:
         return self.courses[-1].to_port
-    
+
     @property
     def trajet(self) -> list[Course | Etape]:
         """
@@ -433,15 +487,15 @@ class Croisiere:
         """
         def start_time_course(c: Course):
             return c.etapes[0].depart
-    
+        
         def start_time_pause(e: Etape):
             return e.depart
-    
+        
         courses = sorted(self.courses, key=start_time_course)
         pauses = sorted(self.pauses, key=start_time_pause)
-    
+        
         trajet: list[Course | Etape] = []
-    
+        
         i = j = 0
         while i < len(courses) and j < len(pauses):
             if start_time_course(courses[i]) <= start_time_pause(pauses[j]):
@@ -450,7 +504,7 @@ class Croisiere:
             else:
                 trajet.append(pauses[j])
                 j += 1
-    
+        
         trajet.extend(courses[i:])
         trajet.extend(pauses[j:])
         return trajet
@@ -491,6 +545,36 @@ class Croisiere:
         if self.nav_minutes == 0:
             return 0.0
         return self.total_km / (self.nav_minutes / 60.0)
+    
+    def __repr__(self) -> str:
+        # représentation "pythonique", structurelle
+        traj = self.trajet
+        profile_repr = format_profile_summary(self.profile, values=False)
+
+        if not traj:
+            trajet_repr = ""
+        else:
+            inner_parts = []
+            for seg in traj:
+                if isinstance(seg, Course):
+                    inner_parts.append(repr(seg))
+                else:  # Etape de pause entre courses
+                    inner_parts.append(seg._repr_without_profile())
+            inner = ",\n    ".join(inner_parts)
+            trajet_repr = f"\n    {inner}\n"
+
+        return (
+            "Croisiere("
+            f"nom={self.nom!r}, "
+            f"from_port={self.from_port!r}, "
+            f"to_port={self.to_port!r}, "
+            f"profile={profile_repr}), "
+            f"trajet=[{trajet_repr}])"
+        )
+
+    def __str__(self) -> str:
+        # affichage "humain" quand tu fais print(croisiere)
+        return self.to_pretty_str()
 
     def to_pretty_str(self) -> str:
         lines: list[str] = [
@@ -504,29 +588,7 @@ class Croisiere:
                 lines.append(segment.to_pretty_str(indent=2))
 
         return "\n".join(lines)
-    
-    def __repr__(self) -> str:
-        # représentation "pythonique", structurelle
-        traj = self.trajet
 
-        if not traj:
-            trajet_repr = ""
-        else:
-            inner = ",\n    ".join(repr(seg) for seg in traj)
-            trajet_repr = f"\n    {inner}\n"
-
-        return (
-            "Croisiere("
-            f"nom={self.nom!r}, "
-            f"from_port={self.from_port!r}, "
-            f"to_port={self.to_port!r}, "
-            f"trajet=[{trajet_repr}])"
-        )
-
-    def __str__(self) -> str:
-        # affichage "humain" quand tu fais print(croisiere)
-        return self.to_pretty_str()
-    
     @staticmethod
     def view_croisiere(obj: Croisiere | Iterable[Croisiere]) -> None:
         """Visualisation d'une ou plusieurs croisières dans la console."""
@@ -541,7 +603,7 @@ class Croisiere:
             print()
             print(c.to_pretty_str())
             print()
-    
+
     # --- Construction à partir d'un DataFrame ---
     @classmethod
     def from_df(cls, df: pd.DataFrame) -> list[Croisiere]:
@@ -620,7 +682,7 @@ class Croisiere:
             df["horaire"] = df["horaire"].dt.time
 
         return cls.from_df(df)
-    
+
     # --- Variante a utiliser à l'intérieur du model CGN ---
     @classmethod
     def from_cgn_croisiere_csv(cls, name: str) -> list[Croisiere]:
@@ -631,7 +693,7 @@ class Croisiere:
         """
         path = _cgn_croisiere_csv_path(f"{name}.csv")
         return cls.from_csv(path)
-    
+
     def check_continuite(self) -> bool:
         """
         Vérifie que pour tout élément consécutif du trajet,
