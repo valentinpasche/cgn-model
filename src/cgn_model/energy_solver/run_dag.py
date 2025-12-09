@@ -89,6 +89,10 @@ def run_vector(solver: SolverDAG) -> None:
             bus_v.ledger[f"conv_in:{conv_id}"] += p_out
 
     elif solver.mode == "forward":
+        # Protection calcul non vérifié, à supprimer en temps voulu.
+        raise NotImplementedError(f"Mode solver `{solver.mode!r}` non vérifié. Ne pas utiliser pour l'instant.")
+        
+        # Déroulement prévu, ne pas supprimer
         for (u, v), conv_id in solver.plan:
             conv = solver.converters[conv_id]
             bus_u = solver.buses[u]
