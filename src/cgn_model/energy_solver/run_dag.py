@@ -6,14 +6,14 @@ from typing import Mapping
 from cgn_model.energy_solver import SolverDAG
 
 
-def _check_and_get_len(profiles: Mapping[str, np.ndarray]) -> int:
-    if not profiles:
-        raise ValueError("Aucun profil d'input fourni.")
-    lens = {k: np.asarray(v).shape for k, v in profiles.items()}
-    shapes = set(lens.values())
-    if len(shapes) != 1 or len(next(iter(shapes))) != 1:
-        raise ValueError(f"Tous les profils doivent être 1D et de même taille, reçu: {lens}")
-    return next(iter(shapes))[0]
+# def _check_and_get_len(profiles: Mapping[str, np.ndarray]) -> int:
+#     if not profiles:
+#         raise ValueError("Aucun profil d'input fourni.")
+#     lens = {k: np.asarray(v).shape for k, v in profiles.items()}
+#     shapes = set(lens.values())
+#     if len(shapes) != 1 or len(next(iter(shapes))) != 1:
+#         raise ValueError(f"Tous les profils doivent être 1D et de même taille, reçu: {lens}")
+#     return next(iter(shapes))[0]
 
 def _pos(x: np.ndarray) -> np.ndarray:
     return np.maximum(x, 0.0)
@@ -22,36 +22,84 @@ def _neg_mag(x: np.ndarray) -> np.ndarray:
     """Magnitude des déficits: (-x)+ == max(-x,0)."""
     return np.maximum(-x, 0.0)
 
-def prepare_state(solver: SolverDAG, profiles: Mapping[str, np.ndarray]) -> int:
+def prepare_state(
+    solver: SolverDAG,
+    profiles: Mapping[str, np.ndarray] | Mapping[str, tuple[str, np.ndarray]],
+    *,
+    check_bus: bool = True,        # vérifie que le bus fourni (si présent) matche l’input
+    raise_on_extra: bool = False,  # lève si des clés de profiles ne correspondent à aucun input
+) -> int:
     """
     Applique les inputs et (ré)initialise les états des bus/convertisseurs.
-    - profiles: dict[input_id -> profil signé]
-    Retourne N (longueur temporelle).
-    """
-    N = _check_and_get_len(profiles)
 
-    # init bus states
+    Accepte deux formats pour `profiles` :
+      - {input_id: array}
+      - {input_id: (bus_id, array)}
+
+    Effets :
+      - Réinitialise buses.net_w et buses.ledger
+      - Réinitialise converters.p_in_w et p_out_w
+      - Affecte SignedInput.profile pour chaque input
+      - Agrège chaque profil sur le bus associé (net_w) et log dans ledger ("in:<input_id>")
+    Retourne :
+      - N (longueur temporelle commune à tous les profils)
+    """
+    # Optionnel : détecter des profils "en trop"
+    if raise_on_extra:
+        extra = set(profiles.keys()) - set(solver.inputs.keys())
+        if extra:
+            raise KeyError(f"Profils inconnus (aucun input correspondant côté solver): {sorted(extra)!r}")
+
+    # 1) Préparer/valider tous les arrays et déterminer N
+    prepared: dict[str, np.ndarray] = {}
+    N: int | None = None
+
+    for input_id, s in solver.inputs.items():
+        if input_id not in profiles:
+            raise KeyError(f"Profil manquant pour l'input {input_id!r}")
+
+        payload = profiles[input_id]
+        if isinstance(payload, tuple) and len(payload) == 2:
+            bus_id, arr = payload
+            if check_bus and bus_id != s.bus:
+                raise ValueError(
+                    f"Profil {input_id!r} fourni pour bus {bus_id!r}, "
+                    f"mais l'input est connecté à {s.bus!r}."
+                )
+        else:
+            arr = payload
+
+        arr = np.asarray(arr, dtype=float)
+        if arr.ndim != 1:
+            raise ValueError(f"Profil {input_id!r} doit être 1D, reçu shape={arr.shape}.")
+
+        if N is None:
+            N = int(arr.shape[0])
+        elif arr.shape[0] != N:
+            raise ValueError(f"Longueur incohérente pour {input_id!r}: {arr.shape[0]} != {N}.")
+
+        prepared[input_id] = arr
+
+    if N is None:
+        raise ValueError("Aucun profil fourni à prepare_state().")
+
+    # 2) Réinitialiser l'état des bus
     for b in solver.buses.values():
         b.net_w = np.zeros(N, dtype=float)
         b.ledger.clear()
 
-    # init conv logs
+    # 3) Réinitialiser les logs des convertisseurs
     for c in solver.converters.values():
         c.p_in_w = np.zeros(N, dtype=float)
         c.p_out_w = np.zeros(N, dtype=float)
 
-    # attach/applique inputs
-    for s in solver.inputs.values():
-        try:
-            prof = np.asarray(profiles[s.id], dtype=float)
-        except KeyError as e:
-            raise KeyError(f"Profil manquant pour l'input '{s.id}'") from e
-        if prof.shape != (N,):
-            raise ValueError(f"Profil '{s.id}' a la mauvaise taille: {prof.shape}, attendu {(N,)}")
-        s.profile = prof
-        solver.buses[s.bus].net_w += prof
-        # log côté bus
-        solver.buses[s.bus].ledger[f"in:{s.id}"] = prof
+    # 4) Attacher/appliquer les inputs et logger sur les bus
+    for input_id, arr in prepared.items():
+        s = solver.inputs[input_id]
+        s.profile = arr
+        bus = solver.buses[s.bus]
+        bus.net_w += arr
+        bus.ledger[f"in:{input_id}"] = arr
 
     return N
 
