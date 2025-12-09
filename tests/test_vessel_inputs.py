@@ -59,7 +59,8 @@ adapters:
     unit_in: "m/s"                    # l’adapter attend m/s
     unit_out: "N"                     # et produit des Newton
     params:
-      coeffs: [-208.7, 1902.9, 530.5, 95.1]  # exemple ([a0, a1, a2] -> P = a0 + a1*v + a2*v^2)
+      # coefs vitesse "m/s" to force "N", e.g. ([a0, a1, a2] -> P = a0 + a1*v + a2*v^2)
+      coeffs: [-209.0, 1904.4, 531.36, 93.312]
     
     # 2) puissance = F * v (multi-entrées)
   - id: "shaft_power_from_Fv"
@@ -75,14 +76,15 @@ adapters:
       speed_unit_in: "m/s"
       unit_out: "W"
     
-    # 3) vitesse -> puissance (polynôme)
-  - id: "shaft_power_from_speed"
-    kind: "speed_to_power_poly"
-    source: "speed"
-    unit_in: "m/s"                    # l’adapter attend m/s
-    unit_out: "W"                     # et produit des Watts
-    params:
-      coeffs: [0.0, -208.7, 1902.9, 530.5, 95.1]   # ici juste 1 degré de plus que la combinaison de 1) + 2)
+  #   # 3) vitesse -> puissance (polynôme)
+  # - id: "shaft_power_from_speed"
+  #   kind: "speed_to_power_poly"
+  #   source: "speed"
+  #   unit_in: "m/s"                    # l’adapter attend m/s
+  #   unit_out: "W"                     # et produit des Watts
+  #   params:
+  #     # ici juste 1 degré de plus que la combinaison de 1) + 2)
+  #     coeffs: [0.0, -209.0, 1904.4, 531.36, 93.312]
 
 inputs:
   - id: "shaft_demand"
