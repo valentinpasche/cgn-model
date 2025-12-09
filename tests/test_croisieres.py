@@ -1,10 +1,12 @@
 # Test pour valider les croisiere
 # Y compris pour y intéger la "reprise" du delay sur l'étapes suivante
 
-from cgn_model.navigation import Croisiere
+from cgn_model.navigation import Croisiere, SpeedProfileParams
 import warnings
 
 
+params = SpeedProfileParams(
+)
 
 croisieres = Croisiere.from_cgn_croisiere_csv("all")
 
@@ -26,7 +28,7 @@ for c in croisieres:
     # On capture les warnings de CETTE croisière uniquement
     with warnings.catch_warnings(record=True) as wlist:
         warnings.simplefilter("always")  # forcer l’enregistrement de tous les warnings
-        p, _ = c.speed_profile()
+        p, _ = c.speed_profile(params)
 
     c_profiles.append(p)
 
