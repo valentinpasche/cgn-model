@@ -20,12 +20,12 @@ profiles:
     unit: "W"
     value: 8000            # float/int ou [8000] (len=1)
 
-  # 2) Série inline
-  - id: "speed"
-    kind: "series"
-    unit: "m/s"
-    data: [3.0, 3.5, 4.2, 3.8]
-    master: true
+  # # 2) Série inline
+  # - id: "speed"
+  #   kind: "series"
+  #   unit: "m/s"
+  #   data: [3.0, 3.5, 4.2, 3.8]
+  #   master: true
 
   # # 3) Depuis un fichier (csv)
   # - id: "speed"
@@ -34,22 +34,22 @@ profiles:
   #   file: "speed_vector_ms.csv" # relatif au projet, ou absolu
   #   column: "speed_ms"     # optionnel: nom de colonne
 
-  # # 4) Vitesse issue de l’horaire (module navigation)
-  # - id: "speed"
-  #   kind: "nav_speed"
-  #   unit: "m/s"            # unité du profil produit
-  #   source: "cgn_croisieres/all"     # dataset interne
-  #   select:
-  #     by: "cruise"         # "cruise" | "course" | "leg"
-  #     cruise_name: "Lavaux - Haut-Lac - Grand-Lac"     # si by="cruise"
-  #     course_no: 106                                   # si by="course"
-  #     leg: { from_port: "Rolle", to_port: "Yvoire" }   # si by="leg"
-  #   params:                 # MRUA
-  #     acc: 0.04             # [m/s²]
-  #     dec: 0.04             # [m/s²]
-  #     v_croisiere: 7        # [m/s]
-  #     allow_delay: true
-  #   master: true            # ← ce profil pilote la longueur N
+  # 4) Vitesse issue de l’horaire (module navigation)
+  - id: "speed"
+    kind: "nav_speed"
+    unit: "m/s"            # unité du profil produit
+    source: "cgn_croisieres/all"     # dataset interne
+    select:
+      by: "cruise"         # "cruise" | "course" | "leg"
+      cruise_name: "Lavaux - Haut-Lac - Grand-Lac"     # si by="cruise"
+      course_no: 106                                   # si by="course"
+      leg: { from_port: "Rolle", to_port: "Yvoire" }   # si by="leg"
+    params:                 # MRUA
+      acc: 0.04             # [m/s²]
+      dec: 0.04             # [m/s²]
+      v_croisiere: 7        # [m/s]
+      allow_delay: true
+    master: true            # ← ce profil pilote la longueur N
 
 adapters:
     # 1) vitesse -> force (polynôme)
@@ -121,4 +121,4 @@ cfg = yaml.safe_load(cfg_txt)
 vessel = Vessel.from_yaml(cfg)
 mapping = vessel.build_solver_inputs()
 for k, (bus, arr) in mapping.items():
-    print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
+    print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]), "| max:", max(arr))
