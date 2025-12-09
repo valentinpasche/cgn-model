@@ -72,7 +72,7 @@ class SpeedProfileParams:
     dt: float = 1.0                  # [s]
     acc: float = 0.04                # [m/s²]
     dec: float = 0.04                # [m/s²]
-    v_croisiere: float = 25 / 3.6    # [m/s]
+    v_croisiere: float = 7    # [m/s]
     v_moyenne_horaire: float | None = None  # [m/s], optionnel, e.g. `23 / 3.6`
     allow_delay: bool = True
 
@@ -757,7 +757,7 @@ if __name__ == "__main__":
     
     # import matplotlib.pyplot as plt
 
-    croisieres = Croisiere.from_csv("all.csv")
+    croisieres = Croisiere.from_cgn_croisiere_csv("all")
     
     # # ---- Test continuité + __repr__
     # for c in croisieres:
