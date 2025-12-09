@@ -183,15 +183,14 @@ def _build_nav_speed(
 
     else:
         raise NotImplementedError(f"select.by={select.by!r} non supporté")
-
-    # 3) calculer le profil via MRUA
-    sp = SpeedProfileParams(
-        dt=float(dt),
-        acc=float(params.acc),
-        dec=float(params.dec),
-        v_croisiere=float(params.v_croisiere),
-        allow_delay=bool(params.allow_delay),
-    )
+    
+    # 3) Fusion des paramètres : dt = global ; le reste, override si fourni
+    sp = SpeedProfileParams(dt=float(dt)) # << défaut de référence ici pour dt
+    if params.acc is not None:         sp.acc = float(params.acc)
+    if params.dec is not None:         sp.dec = float(params.dec)
+    if params.v_croisiere is not None: sp.v_croisiere = float(params.v_croisiere)
+    if params.allow_delay is not None: sp.allow_delay = bool(params.allow_delay)
+    
     # propage la méthode .speed_profil(sp) selon le type (Croisiere/Course/Etape)
     target.speed_profile(sp)
     arr = getattr(target, "profile", None)
@@ -201,68 +200,40 @@ def _build_nav_speed(
 
 
 # ---------- Helpers de "preview" et choix du maître ----------
-
-def _preview_series_file_length(p: SeriesProfileCfg | FileProfileCfg) -> int:
+def _pick_master_id(profiles_cfg: list[ProfileCfg]) -> str:
     """
-    Donne la longueur d’un profil 'series' ou 'file' sans interférer avec N global.
-    """
-    if p.kind == "series":
-        return len(p.data)
-    # file
-    arr = _load_csv_column(p.file, p.column)
-    return int(arr.shape[0])
-
-
-def _preview_nav_length(p: NavSpeedProfileCfg, dt: float) -> int:
-    """
-    Donne la longueur d’un nav_speed en construisant le profil une fois.
-    (Simple et robuste; si besoin d’optimiser plus tard, expose une API 'estimate_length'.)
-    """
-    arr = _build_nav_speed(source=p.source, select=p.select, params=p.params, dt=dt)
-    return int(arr.shape[0])
-
-
-def _pick_master_and_length(
-    profiles_cfg: list[ProfileCfg],
-    dt: float,
-) -> tuple[str, int]:
-    """
-    Sélectionne le profil maître et sa longueur N.
-    Règles:
-      1) si master=true présent → prend le premier.
-      2) sinon, premier nav_speed.
-      3) sinon, premier series/file.
-      4) sinon (tous constants) → erreur: une longueur référence est requise.
+    Choisit l'ID du profil maître sans le construire.
+    Priorité :
+      1) premier p.master == True (mais pas 'constant')
+      2) premier 'nav_speed'
+      3) premier 'series' ou 'file'
+      4) sinon -> erreur (tous constants => ambigu sans longueur de référence)
     """
     # 1) master explicite
     for p in profiles_cfg:
         if getattr(p, "master", False):
-            if p.kind == "nav_speed":
-                return p.id, _preview_nav_length(p, dt)
-            if p.kind in ("series", "file"):
-                return p.id, _preview_series_file_length(p)  # type: ignore[arg-type]
-            # constant comme maître -> ambigu sans longueur globale
-            raise ValueError(
-                f"Profil maître {p.id!r} est 'constant' : une longueur de référence est nécessaire "
-                "(déclare un nav_speed/series/file maître ou ajoute un profil non-constant)."
-            )
+            if p.kind == "constant":
+                raise ValueError(
+                    f"Profil maître {p.id!r} est 'constant' : une longueur de référence est nécessaire "
+                    "(déclare un nav_speed/series/file maître)."
+                )
+            return p.id
 
     # 2) premier nav_speed
     for p in profiles_cfg:
         if p.kind == "nav_speed":
-            return p.id, _preview_nav_length(p, dt)
+            return p.id
 
     # 3) premier series/file
     for p in profiles_cfg:
         if p.kind in ("series", "file"):
-            return p.id, _preview_series_file_length(p)  # type: ignore[arg-type]
+            return p.id
 
     # 4) sinon
     raise ValueError(
         "Aucune longueur de référence trouvée (tous les profils sont 'constant'). "
-        "Déclare un 'nav_speed' ou 'series/file' (ou fournis une longueur globale si tu souhaites broadcast)."
+        "Déclare un 'nav_speed' ou 'series/file'."
     )
-
 
 # ---------------- Types & runtime entities ----------------
 
@@ -308,6 +279,7 @@ class Vessel:
     name: str
     vessel_type: VesselType
     solver: SolverDAG
+    dt: float
 
     # runtime (facultatif, utile pour itérer/inspecter)
     profiles: dict[str, Profile] | None = None
@@ -332,7 +304,8 @@ class Vessel:
         # 3) Sections 'métier' (profiles/adapters/inputs) → runtime objects
         raw = cls._extract_sections(cfg)
         sections = VesselSectionsCfg.model_validate(raw)   # déclenche cross_checks()
-        profiles    = cls._build_profiles(sections)
+        dt = float(sections.simulation.dt)
+        profiles    = cls._build_profiles(sections.profiles, dt)
         adapters    = cls._build_adapters(sections.adapters)
         input_binds = cls._build_input_binds(sections.inputs)
 
@@ -343,6 +316,7 @@ class Vessel:
             name=meta_model.name,
             vessel_type=meta_model.vessel_type,
             solver=solver,
+            dt=dt,
             profiles=profiles,
             adapters=adapters,
             input_binds=input_binds,
@@ -433,7 +407,7 @@ class Vessel:
             raise TypeError(f"Section '{section}' doit être liste ou mapping; reçu {type(value).__name__}.")
 
         return {
-            "simulation": pick(source.get("silulation", {})),
+            "simulation": pick(source.get("simulation", {})),
             "profiles":   _ensure_list(pick(source.get("profiles")),   "profiles"),
             "adapters":   _ensure_list(pick(source.get("adapters")),   "adapters"),
             "inputs":     _ensure_list(pick(source.get("inputs")),     "inputs"),  # bindings côté vessel
@@ -441,69 +415,80 @@ class Vessel:
 
     # -------- Builders runtime --------    
     @staticmethod
-    def _build_profiles(
-        sections: VesselSectionsCfg,
-    ) -> dict[str, Profile]:
-        dt = sections.simulation.dt
-        # 1) master + N
-        master_id, N = _pick_master_and_length(sections.profiles, dt)
-    
+    def _build_profiles(cfg_profiles: list[ProfileCfg], dt: float) -> dict[str, Profile]:
         profiles: dict[str, Profile] = {}
     
-        for p in sections.profiles:
+        # --- 1) choisir et construire le maître (une seule fois)
+        master_id = _pick_master_id(cfg_profiles)
+        master_obj = next(p for p in cfg_profiles if p.id == master_id)
+    
+        if master_obj.kind == "nav_speed":
+            data = _build_nav_speed(
+                source=master_obj.source,
+                select=master_obj.select,
+                params=master_obj.params,
+                dt=dt,
+            )
+        elif master_obj.kind == "series":
+            data = np.asarray(master_obj.data, dtype=np.float64)
+        elif master_obj.kind == "file":
+            data = _load_csv_column(
+                file=master_obj.file,
+                column=master_obj.column,
+                sep=master_obj.sep,
+                decimal=master_obj.decimal,
+                encoding=master_obj.encoding,
+            )
+        else:
+            # on a déjà interdit 'constant' comme maître
+            raise NotImplementedError(f"Profil maître de kind {master_obj.kind!r} non géré")
+    
+        N = int(data.shape[0])
+        profiles[master_obj.id] = Profile(id=master_obj.id, unit=master_obj.unit, data=data)
+    
+        # --- 2) construire les autres profils en s'alignant sur N
+        for p in cfg_profiles:
+            if p.id == master_id:
+                continue
+    
             if p.kind == "constant":
                 vals = p.value if isinstance(p.value, list) else [p.value]
                 if len(vals) == 1:
-                    data = np.full(N, float(vals[0]), dtype=np.float64)
+                    arr = np.full(N, float(vals[0]), dtype=np.float64)
                 elif len(vals) == N:
-                    data = np.asarray(vals, dtype=np.float64)
+                    arr = np.asarray(vals, dtype=np.float64)
                 else:
                     raise ValueError(f"Profil constant {p.id!r}: longueur {len(vals)} incompatible avec N={N}.")
-                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
     
             elif p.kind == "series":
-                data = np.asarray(p.data, dtype=np.float64)
-                if data.shape[0] != N:
-                    raise ValueError(f"Profil {p.id!r}: len={len(data)} != N={N}.")
-                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+                arr = np.asarray(p.data, dtype=np.float64)
+                if arr.shape[0] != N:
+                    raise ValueError(f"Profil {p.id!r}: len={len(arr)} != N={N}.")
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
     
             elif p.kind == "file":
-                data = _load_csv_column(
+                arr = _load_csv_column(
                     file=p.file,
                     column=p.column,
-                    sep=p.sep,                # None => auto-détection
-                    decimal=p.decimal,        # "." ou ","
-                    encoding=p.encoding,      # "utf-8-sig" par défaut
+                    sep=p.sep,
+                    decimal=p.decimal,
+                    encoding=p.encoding,
                 )
-                if data.shape[0] != N:
-                    raise ValueError(f"Profil fichier {p.id!r}: len={len(data)} != N={N}.")
-                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+                if arr.shape[0] != N:
+                    raise ValueError(f"Profil fichier {p.id!r}: len={len(arr)} != N={N}.")
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
     
             elif p.kind == "nav_speed":
-                data = _build_nav_speed(
-                    source=p.source,
-                    select=p.select,        # cruise/course/leg
-                    params=p.params,        # acc/dec/v_croisiere/allow_delay
-                    dt=dt,
-                )
-                if data.shape[0] != N:
-                    raise ValueError(f"Profil nav_speed {p.id!r}: len={len(data)} != N={N}.")
-                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+                arr = _build_nav_speed(source=p.source, select=p.select, params=p.params, dt=dt)
+                if arr.shape[0] != N:
+                    raise ValueError(f"Profil nav_speed {p.id!r}: len={len(arr)} != N={N}.")
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
     
             else:
                 raise NotImplementedError(f"Profile kind non supporté: {p.kind!r}")
     
         return profiles
-
-    # @staticmethod
-    # def _build_profiles(cfg_profiles: list[ProfileCfg]) -> dict[str, Profile]:
-    #     profiles: dict[str, Profile] = {}
-    #     for p in cfg_profiles:
-    #         if p.data is None:
-    #             raise ValueError(f"Profile {p.id!r}: 'data' manquant (support 'file' non implémenté).")
-    #         arr = np.asarray(p.data, dtype=np.float64)
-    #         profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
-    #     return profiles
 
     @staticmethod
     def _build_adapters(cfg_adapters: list[AdapterCfg]) -> dict[str, AdapterABC]:

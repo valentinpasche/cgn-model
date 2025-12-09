@@ -28,7 +28,7 @@ class VesselCfg(BaseModel):
 # Simulation au global
 class SimulationCfg(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    dt: float = Field(gt=0, default=1.0)
+    dt: Annotated[float, Field(gt=0)] = 1.0
     
 # profiles
 class ProfileCfgBase(BaseModel):
@@ -47,6 +47,7 @@ class SeriesProfileCfg(ProfileCfgBase):
     data: list[float]
 
 class FileProfileCfg(ProfileCfgBase):
+    model_config = ConfigDict(extra="forbid")
     kind: Literal["file"]
     file: StrictStr
     column: StrictStr | None = None
@@ -67,33 +68,68 @@ class FileProfileCfg(ProfileCfgBase):
             raise ValueError(f"Separateur invalide: {v!r}. Attendu: ',', ';', '\\t', '|', 'tab'.")
         return v
 
-# Horaire CGN, profils inputs
+# ---- Horaire CGN, profils inputs
+class NavParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Optionnels (None par défaut), et si fournis: > 0
+    acc: Annotated[float, Field(gt=0)] | None = None
+    dec: Annotated[float, Field(gt=0)] | None = None
+    v_croisiere: Annotated[float, Field(gt=0)] | None = None
+    allow_delay: bool | None = None
+
+# 1) modèles stricts
 class NavSelectCruise(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     by: Literal["cruise"]
     cruise_name: StrictStr
 
 class NavSelectCourse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     by: Literal["course"]
     course_no: int
 
 class NavSelectLeg(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     by: Literal["leg"]
-    leg: dict[str, StrictStr]  # {from_port, to_port}
+    leg: dict[str, StrictStr]  # {from_port,to_port}
 
-NavSelect = Annotated[NavSelectCruise | NavSelectCourse | NavSelectLeg, Field(discriminator="by")]
+NavSelect = Annotated[
+    NavSelectCruise | NavSelectCourse | NavSelectLeg,
+    Field(discriminator="by")
+]
 
-class NavParams(BaseModel):
-    acc: float = 0.04
-    dec: float = 0.04
-    v_croisiere: float = Field(default=25/3.6, gt=0)
-    allow_delay: bool = True
-
+# 2) pré-normalisation dans le conteneur (ici le profil nav_speed)
 class NavSpeedProfileCfg(ProfileCfgBase):
+    model_config = ConfigDict(extra="forbid")
     kind: Literal["nav_speed"]
     unit: StrictStr = "m/s"
-    source: StrictStr  # ex: "cgn_croisieres/all"
+    source: StrictStr
     select: NavSelect
     params: NavParams = Field(default_factory=NavParams)
+
+    @field_validator("select", mode="before")
+    @classmethod
+    def _normalise_select(cls, v: Any) -> Any:
+        """
+        Autorise les trois clés connues {cruise_name, course_no, leg}
+        mais ne garde que celle requise par 'by'. Refuse toute clé inconnue.
+        """
+        if not isinstance(v, dict):
+            return v
+        allowed_pool = {"by", "cruise_name", "course_no", "leg"}
+        unknown = set(v.keys()) - allowed_pool
+        if unknown:
+            raise ValueError(f"Clés inconnues dans select: {sorted(unknown)}")
+
+        by = v.get("by")
+        if by == "cruise":
+            return {"by": "cruise", "cruise_name": v.get("cruise_name")}
+        if by == "course":
+            return {"by": "course", "course_no": v.get("course_no")}
+        if by == "leg":
+            return {"by": "leg", "leg": v.get("leg")}
+        # Laisse le validateur du discriminant se plaindre si 'by' est invalide
+        return v
 
 ProfileCfg = Annotated[
     ConstantProfileCfg | SeriesProfileCfg | FileProfileCfg | NavSpeedProfileCfg,
