@@ -15,18 +15,254 @@ from cgn_model.energy_solver.types import Mode
 from cgn_model.vessel_model.config import (
     VesselType,
     VesselCfg,
-    ProfileCfg,
     AdapterCfg,
     InputBindCfg,
     VesselSectionsCfg,
+    ProfileCfg,            # Union discriminée: constant/series/file/nav_speed
+    SeriesProfileCfg,
+    FileProfileCfg,
+    NavSpeedProfileCfg,
+    NavSelect,
+    NavParams,
 )
 from cgn_model.vessel_model.adapters import AdapterABC, build_adapter_from_cfg
+from cgn_model.navigation import Croisiere, SpeedProfileParams
 
 type FArray = NDArray[np.floating]
 type SolverMode = Mode
 
 
 __all__ = ["Vessel"]
+
+
+# ---------- Helpers I/O & navigation ----------
+def _load_csv_column(
+    file: str,
+    column: str | None,
+    sep: str | None = None,           # <- override possible
+    decimal: str = ".",               # <- "." ou ","
+    encoding: str = "utf-8-sig",      # gère le BOM Excel
+) -> FArray:
+    """
+    Charge une colonne numérique d’un CSV en float64, avec:
+      - auto-détection du séparateur si 'sep' est None,
+      - support des décimales européennes via 'decimal',
+      - tolérance BOM via 'utf-8-sig'.
+
+    Si 'column' est None, on prend la première colonne.
+    """
+    try:
+        import pandas as pd  # type: ignore
+
+        # Auto-détection via l’engine Python si sep=None
+        if sep is None:
+            df = pd.read_csv(file, sep=None, engine="python", decimal=decimal, encoding=encoding)
+        else:
+            df = pd.read_csv(file, sep=sep, decimal=decimal, encoding=encoding)
+
+        col = column or (df.columns[0] if len(df.columns) else None)
+        if not col or col not in df.columns:
+            raise ValueError(
+                f"Colonne {column!r} introuvable dans {file!r}. "
+                f"Colonnes: {list(df.columns)!r}"
+            )
+
+        arr = df[col].to_numpy(dtype="float64", na_value=np.nan)
+        if np.isnan(arr).any():
+            raise ValueError(f"Valeurs non numériques/NA dans {file!r} colonne {col!r}.")
+        return arr  # type: ignore[return-value]
+
+    except ModuleNotFoundError:
+        import csv
+        # Fallback: tente Sniffer si sep non fourni
+        with open(file, "r", encoding=encoding, newline="") as f:
+            if sep is None:
+                sample = f.read(4096)
+                f.seek(0)
+                try:
+                    dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
+                    sep = dialect.delimiter
+                except csv.Error:
+                    sep = ","  # défaut raisonnable
+            reader = csv.DictReader(f, delimiter=sep)
+            if reader.fieldnames is None:
+                raise ValueError(
+                    f"CSV {file!r} sans en-tête; fournis 'column' ou installe pandas."
+                )
+            col = column or reader.fieldnames[0]
+            if col not in reader.fieldnames:
+                raise ValueError(
+                    f"Colonne {column!r} introuvable dans {file!r}. "
+                    f"Colonnes: {reader.fieldnames!r}"
+                )
+
+            vals: list[float] = []
+            for row in reader:
+                s = row[col]
+                # gérer décimale ","
+                if decimal == ",":
+                    s = s.replace(",", ".")
+                try:
+                    vals.append(float(s))
+                except ValueError as e:
+                    raise ValueError(
+                        f"Valeur non numérique dans {file!r} colonne {col!r}: {row[col]!r}"
+                    ) from e
+        return np.asarray(vals, dtype=np.float64)
+
+def _build_nav_speed(
+    *,
+    source: str,                # ex: "cgn_croisieres/all"
+    select: NavSelect,          # by="cruise" | "course" | "leg"
+    params: NavParams,          # acc/dec/v_croisiere/allow_delay
+    dt: float,                  # pas global [s]
+) -> FArray:
+    """
+    Construit un profil de vitesse [m/s] à partir de ton module navigation.
+    Supporte:
+      - by="cruise": cruise_name
+      - by="course": course_no
+      - by="leg":    leg={from_port,to_port}
+    """
+    # 1) charger les croisières depuis la "source"
+    #    Pour l’instant on supporte "cgn_croisieres/<which>"
+    if not source.startswith("cgn_croisieres/"):
+        raise ValueError(f"source nav_speed non supportée: {source!r} (attendu 'cgn_croisieres/<which>')")
+    which = source.split("/", 1)[1] or "all"
+    cruises: list[Croisiere] = Croisiere.from_cgn_croisiere_csv(which)
+
+    # 2) sélectionner l’objet navigation cible
+    target = None
+
+    if select.by == "cruise":
+        name = select.cruise_name
+        for cr in cruises:
+            if getattr(cr, "nom", None) == name:
+                target = cr
+                break
+        if target is None:
+            raise ValueError(f"Croisière {name!r} introuvable dans {which!r}.")
+
+    elif select.by == "course":
+        num = select.course_no
+        for cr in cruises:
+            for c in getattr(cr, "courses", []):
+                if getattr(c, "numero", None) == num:
+                    target = c
+                    break
+            if target is not None:
+                break
+        if target is None:
+            raise ValueError(f"Course n°{num} introuvable dans {which!r}.")
+
+    elif select.by == "leg":
+        leg = select.leg or {}
+        fport = leg.get("from_port"); tport = leg.get("to_port")
+        if not fport or not tport:
+            raise ValueError("select.leg doit contenir {from_port, to_port}.")
+        for cr in cruises:
+            # Etapes dans les courses
+            for c in getattr(cr, "courses", []):
+                for e in getattr(c, "etapes", []):
+                    if getattr(e, "from_port", None) == fport and getattr(e, "to_port", None) == tport:
+                        target = e
+                        break
+                if target is not None:
+                    break
+            if target is not None:
+                break
+            # Etapes "pauses" éventuelles (si pertinent)
+            for e in getattr(cr, "pauses", []) or []:
+                if getattr(e, "from_port", None) == fport and getattr(e, "to_port", None) == tport:
+                    target = e
+                    break
+            if target is not None:
+                break
+        if target is None:
+            raise ValueError(f"Étape {fport!r}->{tport!r} introuvable dans {which!r}.")
+
+    else:
+        raise NotImplementedError(f"select.by={select.by!r} non supporté")
+
+    # 3) calculer le profil via MRUA
+    sp = SpeedProfileParams(
+        dt=float(dt),
+        acc=float(params.acc),
+        dec=float(params.dec),
+        v_croisiere=float(params.v_croisiere),
+        allow_delay=bool(params.allow_delay),
+    )
+    # propage la méthode .speed_profil(sp) selon le type (Croisiere/Course/Etape)
+    target.speed_profile(sp)
+    arr = getattr(target, "profile", None)
+    if arr is None:
+        raise RuntimeError("Le module navigation n’a pas produit de 'profile'.")
+    return np.asarray(arr, dtype=np.float64)
+
+
+# ---------- Helpers de "preview" et choix du maître ----------
+
+def _preview_series_file_length(p: SeriesProfileCfg | FileProfileCfg) -> int:
+    """
+    Donne la longueur d’un profil 'series' ou 'file' sans interférer avec N global.
+    """
+    if p.kind == "series":
+        return len(p.data)
+    # file
+    arr = _load_csv_column(p.file, p.column)
+    return int(arr.shape[0])
+
+
+def _preview_nav_length(p: NavSpeedProfileCfg, dt: float) -> int:
+    """
+    Donne la longueur d’un nav_speed en construisant le profil une fois.
+    (Simple et robuste; si besoin d’optimiser plus tard, expose une API 'estimate_length'.)
+    """
+    arr = _build_nav_speed(source=p.source, select=p.select, params=p.params, dt=dt)
+    return int(arr.shape[0])
+
+
+def _pick_master_and_length(
+    profiles_cfg: list[ProfileCfg],
+    dt: float,
+) -> tuple[str, int]:
+    """
+    Sélectionne le profil maître et sa longueur N.
+    Règles:
+      1) si master=true présent → prend le premier.
+      2) sinon, premier nav_speed.
+      3) sinon, premier series/file.
+      4) sinon (tous constants) → erreur: une longueur référence est requise.
+    """
+    # 1) master explicite
+    for p in profiles_cfg:
+        if getattr(p, "master", False):
+            if p.kind == "nav_speed":
+                return p.id, _preview_nav_length(p, dt)
+            if p.kind in ("series", "file"):
+                return p.id, _preview_series_file_length(p)  # type: ignore[arg-type]
+            # constant comme maître -> ambigu sans longueur globale
+            raise ValueError(
+                f"Profil maître {p.id!r} est 'constant' : une longueur de référence est nécessaire "
+                "(déclare un nav_speed/series/file maître ou ajoute un profil non-constant)."
+            )
+
+    # 2) premier nav_speed
+    for p in profiles_cfg:
+        if p.kind == "nav_speed":
+            return p.id, _preview_nav_length(p, dt)
+
+    # 3) premier series/file
+    for p in profiles_cfg:
+        if p.kind in ("series", "file"):
+            return p.id, _preview_series_file_length(p)  # type: ignore[arg-type]
+
+    # 4) sinon
+    raise ValueError(
+        "Aucune longueur de référence trouvée (tous les profils sont 'constant'). "
+        "Déclare un 'nav_speed' ou 'series/file' (ou fournis une longueur globale si tu souhaites broadcast)."
+    )
+
 
 # ---------------- Types & runtime entities ----------------
 
@@ -96,7 +332,7 @@ class Vessel:
         # 3) Sections 'métier' (profiles/adapters/inputs) → runtime objects
         raw = cls._extract_sections(cfg)
         sections = VesselSectionsCfg.model_validate(raw)   # déclenche cross_checks()
-        profiles    = cls._build_profiles(sections.profiles)
+        profiles    = cls._build_profiles(sections)
         adapters    = cls._build_adapters(sections.adapters)
         input_binds = cls._build_input_binds(sections.inputs)
 
@@ -197,21 +433,77 @@ class Vessel:
             raise TypeError(f"Section '{section}' doit être liste ou mapping; reçu {type(value).__name__}.")
 
         return {
+            "simulation": pick(source.get("silulation", {})),
             "profiles":   _ensure_list(pick(source.get("profiles")),   "profiles"),
             "adapters":   _ensure_list(pick(source.get("adapters")),   "adapters"),
             "inputs":     _ensure_list(pick(source.get("inputs")),     "inputs"),  # bindings côté vessel
         }
 
-    # -------- Builders runtime --------
+    # -------- Builders runtime --------    
     @staticmethod
-    def _build_profiles(cfg_profiles: list[ProfileCfg]) -> dict[str, Profile]:
+    def _build_profiles(
+        sections: VesselSectionsCfg,
+    ) -> dict[str, Profile]:
+        dt = sections.simulation.dt
+        # 1) master + N
+        master_id, N = _pick_master_and_length(sections.profiles, dt)
+    
         profiles: dict[str, Profile] = {}
-        for p in cfg_profiles:
-            if p.data is None:
-                raise ValueError(f"Profile {p.id!r}: 'data' manquant (support 'file' non implémenté).")
-            arr = np.asarray(p.data, dtype=np.float64)
-            profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
+    
+        for p in sections.profiles:
+            if p.kind == "constant":
+                vals = p.value if isinstance(p.value, list) else [p.value]
+                if len(vals) == 1:
+                    data = np.full(N, float(vals[0]), dtype=np.float64)
+                elif len(vals) == N:
+                    data = np.asarray(vals, dtype=np.float64)
+                else:
+                    raise ValueError(f"Profil constant {p.id!r}: longueur {len(vals)} incompatible avec N={N}.")
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+    
+            elif p.kind == "series":
+                data = np.asarray(p.data, dtype=np.float64)
+                if data.shape[0] != N:
+                    raise ValueError(f"Profil {p.id!r}: len={len(data)} != N={N}.")
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+    
+            elif p.kind == "file":
+                data = _load_csv_column(
+                    file=p.file,
+                    column=p.column,
+                    sep=p.sep,                # None => auto-détection
+                    decimal=p.decimal,        # "." ou ","
+                    encoding=p.encoding,      # "utf-8-sig" par défaut
+                )
+                if data.shape[0] != N:
+                    raise ValueError(f"Profil fichier {p.id!r}: len={len(data)} != N={N}.")
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+    
+            elif p.kind == "nav_speed":
+                data = _build_nav_speed(
+                    source=p.source,
+                    select=p.select,        # cruise/course/leg
+                    params=p.params,        # acc/dec/v_croisiere/allow_delay
+                    dt=dt,
+                )
+                if data.shape[0] != N:
+                    raise ValueError(f"Profil nav_speed {p.id!r}: len={len(data)} != N={N}.")
+                profiles[p.id] = Profile(id=p.id, unit=p.unit, data=data)
+    
+            else:
+                raise NotImplementedError(f"Profile kind non supporté: {p.kind!r}")
+    
         return profiles
+
+    # @staticmethod
+    # def _build_profiles(cfg_profiles: list[ProfileCfg]) -> dict[str, Profile]:
+    #     profiles: dict[str, Profile] = {}
+    #     for p in cfg_profiles:
+    #         if p.data is None:
+    #             raise ValueError(f"Profile {p.id!r}: 'data' manquant (support 'file' non implémenté).")
+    #         arr = np.asarray(p.data, dtype=np.float64)
+    #         profiles[p.id] = Profile(id=p.id, unit=p.unit, data=arr)
+    #     return profiles
 
     @staticmethod
     def _build_adapters(cfg_adapters: list[AdapterCfg]) -> dict[str, AdapterABC]:
@@ -420,11 +712,11 @@ converters:
     
     # # === Test de base de la création de la classe Vessel ===
 
-    cfg = yaml.safe_load(cfg_txt)
-    vessel = Vessel.from_yaml(cfg)
-    mapping = vessel.build_solver_inputs()
-    for k, (bus, arr) in mapping.items():
-        print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
+    # cfg = yaml.safe_load(cfg_txt)
+    # vessel = Vessel.from_yaml(cfg)
+    # mapping = vessel.build_solver_inputs()
+    # for k, (bus, arr) in mapping.items():
+    #     print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
 
     
     # # === Validation de la config en 2 paties, Vessel -> Solveur ===

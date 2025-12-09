@@ -1,8 +1,8 @@
 # cgn_model/vessel_model/config.py
 
 from collections import Counter, deque
-from typing import Literal, Any
-from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field
+from typing import Literal, Any, Annotated
+from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, field_validator
 
 type VesselType = Literal["DE", "steam", "undefined"]
 
@@ -24,14 +24,81 @@ class VesselCfg(BaseModel):
     @model_validator(mode="after")
     def check_fields(self):
         return self
+
+# Simulation au global
+class SimulationCfg(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dt: float = Field(gt=0, default=1.0)
     
 # profiles
-class ProfileCfg(BaseModel):
+class ProfileCfgBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     unit: StrictStr
     data: list[float] | None = None
-    file: StrictStr | None = None
+    master: bool = False
+
+class ConstantProfileCfg(ProfileCfgBase):
+    kind: Literal["constant"]
+    value: float | list[float]  # len==1 autorisé
+
+class SeriesProfileCfg(ProfileCfgBase):
+    kind: Literal["series"]
+    data: list[float]
+
+class FileProfileCfg(ProfileCfgBase):
+    kind: Literal["file"]
+    file: StrictStr
+    column: StrictStr | None = None
+
+    # Optionnels avec défauts raisonnables
+    sep: str | None = None          # None => auto-détection
+    decimal: Literal[".", ","] = "."  # défaut style US
+    encoding: StrictStr = "utf-8-sig" # gère BOM Excel
+    
+    @field_validator("sep")
+    @classmethod
+    def _norm_sep(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        aliases = {"\\t": "\t", "tab": "\t", "tsv": "\t"}
+        v = aliases.get(v, v)
+        if v not in {",", ";", "\t", "|"}:
+            raise ValueError(f"Separateur invalide: {v!r}. Attendu: ',', ';', '\\t', '|', 'tab'.")
+        return v
+
+# Horaire CGN, profils inputs
+class NavSelectCruise(BaseModel):
+    by: Literal["cruise"]
+    cruise_name: StrictStr
+
+class NavSelectCourse(BaseModel):
+    by: Literal["course"]
+    course_no: int
+
+class NavSelectLeg(BaseModel):
+    by: Literal["leg"]
+    leg: dict[str, StrictStr]  # {from_port, to_port}
+
+NavSelect = Annotated[NavSelectCruise | NavSelectCourse | NavSelectLeg, Field(discriminator="by")]
+
+class NavParams(BaseModel):
+    acc: float = 0.04
+    dec: float = 0.04
+    v_croisiere: float = Field(default=25/3.6, gt=0)
+    allow_delay: bool = True
+
+class NavSpeedProfileCfg(ProfileCfgBase):
+    kind: Literal["nav_speed"]
+    unit: StrictStr = "m/s"
+    source: StrictStr  # ex: "cgn_croisieres/all"
+    select: NavSelect
+    params: NavParams = Field(default_factory=NavParams)
+
+ProfileCfg = Annotated[
+    ConstantProfileCfg | SeriesProfileCfg | FileProfileCfg | NavSpeedProfileCfg,
+    Field(discriminator="kind")
+]
 
 # adapters
 class AdapterCfg(BaseModel):
@@ -60,7 +127,7 @@ class VesselSectionsCfg(BaseModel):
     - Inputs.source référence un signal existant (profile ou adapter)
     """
     model_config = ConfigDict(extra="forbid")
-
+    simulation: SimulationCfg = Field(default_factory=SimulationCfg)
     profiles: list[ProfileCfg] = []
     adapters: list[AdapterCfg] = []
     inputs:   list[InputBindCfg] = []
