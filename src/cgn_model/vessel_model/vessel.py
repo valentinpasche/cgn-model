@@ -655,10 +655,12 @@ vessel:
 
 profiles:
   - id: "speed"
-    unit: "kn"
-    data: [10, 12, 15, 12, 8]         # ou file: "speed.csv"
+    kind: "series"
+    unit: "kn"                                # noeud (1 kn = 1.852 km/h)
+    data: [0.0, 2.7, 5.4, 13.4, -5.4]         # ou file: "speed.csv"
 
   - id: "hotel_load"
+    kind: "series"
     unit: "W"
     data: [8000, 8200, 7500, 7600, 7800]
 
@@ -670,7 +672,8 @@ adapters:
     unit_in: "m/s"                    # l’adapter attend m/s
     unit_out: "N"                     # et produit des Newton
     params:
-      coeffs: [-208.7, 1902.9, 530.5, 95.1]  # exemple ([a0, a1, a2] -> P = a0 + a1*v + a2*v^2)
+      # exemple ([a0, a1, a2] -> P = a0 + a1*v + a2*v^2)
+      coeffs: [-209.0, 1904.4, 531.36, 93.312] # coefs vitesse "m/s" to force "N"
     
     # 2) puissance = F * v (multi-entrées)
   - id: "shaft_power_from_Fv"
@@ -684,7 +687,6 @@ adapters:
       speed_source: "speed"
       force_unit_in: "N"
       speed_unit_in: "m/s"
-      unit_out: "W"
     
     # 3) vitesse -> puissance (polynôme)
   - id: "shaft_power_from_speed"
@@ -693,16 +695,20 @@ adapters:
     unit_in: "m/s"                    # l’adapter attend m/s
     unit_out: "W"                     # et produit des Watts
     params:
-      coeffs: [0.0, -208.7, 1902.9, 530.5, 95.1]   # ici juste 1 degré de plus que la combinaison de 1) + 2)
+      # ici juste 1 degré de plus que la combinaison de 1) + 2)
+      coeffs: [0.0, -209.0, 1904.4, 531.36, 93.312]
 
 inputs:
   - id: "shaft_demand"
     bus: "Mechanical:shaft"
     source: "shaft_power_from_Fv"  # via l’adapter (clé ignorée par le solver, utilisé par Vessel)
+    sign: "consume"
 
   - id: "navops"
     bus: "Electrical:main"
     source: "hotel_load"              # direct: déjà en W
+    sign: "inject"         # Test avec faux inject pour tester le scale negatif
+    scale: -1.0            # voir ci-dessus
 
 solver:
   mode: "inverse"
@@ -728,11 +734,11 @@ converters:
     
     # # === Test de base de la création de la classe Vessel ===
 
-    # cfg = yaml.safe_load(cfg_txt)
-    # vessel = Vessel.from_yaml(cfg)
-    # mapping = vessel.build_solver_inputs()
-    # for k, (bus, arr) in mapping.items():
-    #     print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
+    cfg = yaml.safe_load(cfg_txt)
+    vessel = Vessel.from_yaml(cfg)
+    mapping = vessel.build_solver_inputs()
+    for k, (bus, arr) in mapping.items():
+        print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
 
     
     # # === Validation de la config en 2 paties, Vessel -> Solveur ===
