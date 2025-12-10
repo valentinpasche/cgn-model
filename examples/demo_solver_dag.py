@@ -128,8 +128,8 @@ converters:
       eta:  0.9
 """
 
-# cfg = read_yaml("config_demo_solver_dag.yaml")
-cfg = yaml.safe_load(cfg_txt)
+cfg = read_yaml("config_demo_solver_dag.yaml")
+# cfg = yaml.safe_load(cfg_txt)
 
 solver = SolverDAG.from_yaml(cfg)
 
