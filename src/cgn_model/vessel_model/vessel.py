@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 import copy
 import yaml
 import numpy as np
 from numpy.typing import NDArray
+import warnings
 
 from cgn_model.energy_solver import SolverDAG
 from cgn_model.energy_solver.types import Mode
@@ -244,6 +245,41 @@ def _apply_sign_policy(arr: FArray, policy: str, scale: float | int | None) -> F
     if policy == "as_is":
         return arr
     raise ValueError(f"sign policy inconnue: {policy!r}")
+
+def _warn_inconsistent_sign(
+    arr: np.ndarray,
+    expected: Literal["consume", "inject"],
+    *,
+    eps: float = 1e-9,      # tolérance pour "quasi zéro"
+    min_count_warn: int = 1, # à partir de combien de points "mauvais signe" on prévient
+) -> tuple[int, int, float]:
+    """
+    Retourne (total_utiles, nb_mauvais, frac_mauvais).
+    - expected = 'consume'  -> on attend des valeurs <= 0
+    - expected = 'inject'   -> on attend des valeurs >= 0
+    """
+    nz = np.abs(arr) > eps            # on ignore ~0
+    total = int(nz.sum())
+    if total == 0:
+        return 0, 0, 0.0
+
+    if expected == "consume":
+        wrong_mask = arr[nz] > 0
+    else:  # 'inject'
+        wrong_mask = arr[nz] < 0
+
+    wrong = int(wrong_mask.sum())
+    frac = wrong / total if total else 0.0
+
+    if wrong >= min_count_warn:
+        warnings.warn(
+            f"Signe inattendu pour sign={expected}: {wrong}/{total} "
+            f"échantillons (~{frac*100:.3f}%). "
+            f"min={arr.min():.3g}, max={arr.max():.3g}",
+            stacklevel=2,
+        )
+
+    return total, wrong, frac
 
 # ---------------- Types & runtime entities ----------------
 
@@ -607,11 +643,25 @@ class Vessel:
     
             # sign/scale (policy)
             arr_signed = _apply_sign_policy(arr_w, bind.sign, bind.scale)
+            
+            # contrôle du signe attendu
+            if bind.sign in ("consume", "inject"):
+                total, wrong, frac = _warn_inconsistent_sign(arr_signed, bind.sign)
+                if verbose:
+                    print(
+                        f"[inputs] {bind.id} sign={bind.sign} | total:{total} "
+                        f"| wrong:{wrong} ({frac*100:.3f}%) "
+                        f"| min:{arr_signed.min():.3g} | max:{arr_signed.max():.3g}"
+                    )
     
             full[bind.id] = (bind.bus, arr_signed)
     
             if verbose:
-                print(f"[inputs] {bind.id} -> {bind.bus} | len={len(arr_w)} | first={float(arr_w[0])}")
+                print(f"[inputs] {bind.id} -> {bind.bus}",
+                      "| len:", len(arr_signed),
+                      "| first:", round(float(arr_signed[0]),2),
+                      "| max:", round(max(arr_signed),2)
+                )
     
         return {k: v[1] for k, v in full.items()} if profiles_only else full
 
@@ -708,7 +758,7 @@ inputs:
     bus: "Electrical:main"
     source: "hotel_load"              # direct: déjà en W
     sign: "inject"         # Test avec faux inject pour tester le scale negatif
-    scale: -1.0            # voir ci-dessus
+    scale: -1.0            # voir ci-dessus, ça test aussi le warning
 
 solver:
   mode: "inverse"
@@ -736,9 +786,9 @@ converters:
 
     cfg = yaml.safe_load(cfg_txt)
     vessel = Vessel.from_yaml(cfg)
-    mapping = vessel.build_solver_inputs()
-    for k, (bus, arr) in mapping.items():
-        print(k, "->", bus, "| len:", len(arr), "| first:", float(arr[0]))
+    mapping = vessel.build_solver_inputs(verbose=True)
+    # for k, (bus, arr) in mapping.items():
+    #     print(k, "->", bus, "| len:", len(arr), "| first:", round(float(arr[0]),2), "| max:", round(max(arr),2))
 
     
     # # === Validation de la config en 2 paties, Vessel -> Solveur ===
