@@ -19,9 +19,6 @@ from cgn_model.vessel_model.config import (
     InputBindCfg,
     VesselSectionsCfg,
     ProfileCfg,            # Union discriminée: constant/series/file/nav_speed
-    SeriesProfileCfg,
-    FileProfileCfg,
-    NavSpeedProfileCfg,
     NavSelect,
     NavParams,
 )
@@ -235,6 +232,19 @@ def _pick_master_id(profiles_cfg: list[ProfileCfg]) -> str:
         "Déclare un 'nav_speed' ou 'series/file'."
     )
 
+def _apply_sign_policy(arr: FArray, policy: str, scale: float | int | None) -> FArray:
+    arr = np.asarray(arr, dtype=np.float64)
+    if scale is not None:
+        arr = arr * float(scale)
+    
+    if policy == "consume":  # négatif
+        return -arr
+    if policy == "inject":   # positif
+        return +arr
+    if policy == "as_is":
+        return arr
+    raise ValueError(f"sign policy inconnue: {policy!r}")
+
 # ---------------- Types & runtime entities ----------------
 
 @dataclass
@@ -259,6 +269,8 @@ class InputBind:
     id: str
     bus: str
     source: str
+    sign: str
+    scale: float = 1.0
 
 
 type Signals = dict[str, tuple[FArray, str]]  # id -> (array, unit)
@@ -497,7 +509,13 @@ class Vessel:
 
     @staticmethod
     def _build_input_binds(cfg_inputs: list[InputBindCfg]) -> list[InputBind]:
-        binds = [InputBind(id=b.id, bus=b.bus, source=b.source) for b in cfg_inputs]
+        binds: list[InputBind] = []
+        for b in cfg_inputs:
+            # Construire les kwargs sans 'scale' si absent -> la dataclass appliquera 1.0
+            kwargs: dict[str, object] = dict(id=b.id, bus=b.bus, source=b.source, sign=b.sign)
+            if b.scale is not None:
+                kwargs["scale"] = float(b.scale)  # on ne met l’argument que s’il existe
+            binds.append(InputBind(**kwargs))
         return binds
 
     # -------- Matérialisation des signaux --------
@@ -541,37 +559,37 @@ class Vessel:
         *,
         profiles_only: bool = False,
         verbose: bool = False,
+        auto_convert: bool = False,
     ) -> dict[str, FArray] | dict[str, tuple[str, FArray]]:
-        """
-        Retourne un mapping prêt pour le solver.
-          - Par défaut retourne: input_id -> (bus_id, profile_W)
-          - Si profiles_only=True, retourne: input_id -> profile_W
-
-        Pré-conditions :
-          - self.signals est construit (via from_yaml)
-          - chaque binding.source doit mener à un signal en 'W'
-            (les adapters doivent donc produire de la puissance)
-        """
         if self.signals is None or self.input_binds is None:
             raise RuntimeError("Vessel non initialisé (signals/input_binds manquants).")
-
-        # récupérer (bus attendu par le solver) depuis la config du solver
+    
+        from cgn_model.vessel_model.adapters import convert_unit  # si pas déjà importé
+    
+        # bus cible attendu par le solver pour chaque input
         solver_bus_by_input = {inp_id: inp.bus for inp_id, inp in self.solver.inputs.items()}
-
-        # construire le mapping
+    
         full: dict[str, tuple[str, np.ndarray]] = {}
         for bind in self.input_binds:
             try:
                 arr, unit = self.signals[bind.source]
             except KeyError:
                 raise KeyError(f"Source inconnue pour l'input {bind.id!r}: {bind.source!r}")
-
+    
+            # 1) s’assurer d’être en W
             if unit != "W":
-                raise ValueError(
-                    f"Le binding {bind.id!r} fournit une unité {unit!r} ≠ 'W'. "
-                    "Assure-toi que l'adapter produit des W (ex. kind='poly_speed_to_power')."
-                )
-
+                if not auto_convert:
+                    raise ValueError(
+                        f"Le binding {bind.id!r} fournit une unité {unit!r} ≠ 'W'. "
+                        "Assure-toi que l'adapter produit des W (p.ex. kind='speed_to_power_poly'), "
+                        "ou passe auto_convert=True pour convertir ici."
+                    )
+                try:
+                    arr, unit = convert_unit(arr, unit_in=unit, unit_out="W", quantity="power")
+                except Exception as e:
+                    raise ValueError(f"Conversion en 'W' impossible pour {bind.id!r} depuis {unit!r}: {e}") from e
+    
+            # 2) vérifier le bus attendu (cohérence YAML vs solver)
             bus_expected = solver_bus_by_input.get(bind.id)
             if bus_expected is None:
                 raise KeyError(f"L'input {bind.id!r} n'existe pas dans le solver.")
@@ -579,25 +597,38 @@ class Vessel:
                 raise ValueError(
                     f"Bus mismatch pour l'input {bind.id!r}: YAML={bind.bus!r} vs Solver={bus_expected!r}"
                 )
-
+    
+            # 3) normalisations finales
             arr_w = np.asarray(arr, dtype=np.float64)
-            full[bind.id] = (bind.bus, arr_w)
-
+            if arr_w.ndim != 1:
+                raise ValueError(f"Profil {bind.id!r}: attendu 1D, obtenu shape={arr_w.shape}")
+            if not np.isfinite(arr_w).all():
+                raise ValueError(f"Profil {bind.id!r}: valeurs non finies (NaN/Inf) détectées.")
+    
+            # sign/scale (policy)
+            arr_signed = _apply_sign_policy(arr_w, bind.sign, bind.scale)
+    
+            full[bind.id] = (bind.bus, arr_signed)
+    
             if verbose:
                 print(f"[inputs] {bind.id} -> {bind.bus} | len={len(arr_w)} | first={float(arr_w[0])}")
+    
+        return {k: v[1] for k, v in full.items()} if profiles_only else full
 
-        if profiles_only:
-            return {k: v[1] for k, v in full.items()}
-        return full
-
-    def apply_inputs_to_solver(self, *, strict: bool = True, verbose: bool = False) -> int:
+    def apply_inputs_to_solver(
+        self,
+        *,
+        strict: bool = True,
+        verbose: bool = False,
+        auto_convert: bool = False,
+    ) -> dict[str, FArray] | dict[str, tuple[str, FArray]]:
         """
         Valide et injecte les inputs dans le solver via `prepare_state`.
         Retourne la valeur de retour de `prepare_state` (p.ex. nombre d’inputs appliqués).
         """
         # construit un mapping id -> array (avec validation bus)
         profiles: dict[str, np.ndarray] = self.build_solver_inputs(
-            profiles_only=True, verbose=verbose
+            profiles_only=True, verbose=verbose, auto_convert=auto_convert,
         )  # id -> arr_W
 
         # (optionnel) vérifications supplémentaires

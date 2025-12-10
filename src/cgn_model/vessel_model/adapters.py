@@ -263,6 +263,7 @@ def build_adapter_from_cfg(c: AdapterCfg) -> AdapterABC:
 
 class SpeedToPowerPolyParams(AdapterParams):
     coeffs: list[float] = Field(min_length=1)
+    clip_min: float | None = 0.0  # par défaut on clippe à 0
 
 @dataclass
 class SpeedToPowerPolyAdapter(AdapterABC):
@@ -271,6 +272,7 @@ class SpeedToPowerPolyAdapter(AdapterABC):
     unit_in: str    # ex 'm/s'
     unit_out: str   # ex 'W'
     coeffs: tuple[float, ...]  # a0, a1, ...
+    clip_min: float | None
 
     def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
         # 1) vitesse -> unit_in
@@ -281,28 +283,34 @@ class SpeedToPowerPolyAdapter(AdapterABC):
         for a in self.coeffs:
             out += a * p
             p *= s
-        # 3) puissance -> 'W'
-        out, uo = convert_unit(out, unit_in=self.unit_out, unit_out="W", quantity="power")
+        # 3) clip
+        if self.clip_min is not None:
+            out = np.clip(out, float(self.clip_min), None)
+        # 4) puissance native -> unit_out déclarée
+        out, uo = convert_unit(out, unit_in="W", unit_out=self.unit_out, quantity="power")
         return out, uo
 
 @register("speed_to_power_poly", SpeedToPowerPolyParams)
-def _build_speed_to_power_ploy(id: str, source: str, unit_in: str, unit_out: str, p: SpeedToPowerPolyParams) -> AdapterABC:
-    return SpeedToPowerPolyAdapter(id=id, source=source, unit_in=unit_in, unit_out=unit_out, coeffs=tuple(p.coeffs))
-
+def _build_speed_to_power_poly(
+        id: str, source: str, unit_in: str, unit_out: str, p: SpeedToPowerPolyParams
+) -> AdapterABC:
+    return SpeedToPowerPolyAdapter(
+        id=id, source=source, unit_in=unit_in, unit_out=unit_out,
+        coeffs=tuple(p.coeffs), clip_min=p.clip_min
+    )
 # ============================================================
 # ---- Impl 2 — puissance = force * vitesse (multi-entrées)
 # Déclarer quels adapters sont multi-entrées et quelles clés params contiennent leurs sources,
 # dans le fichier de config du vessel_model !!!
 # ============================================================
 
+
 class ForceAndSpeedToPowerParams(AdapterParams):
     force_source: StrictStr
     speed_source: StrictStr
-    # unités attendues en entrée (avant conversion)
     force_unit_in: StrictStr = "N"
     speed_unit_in: StrictStr = "m/s"
-    # unité de sortie déclarée
-    unit_out: StrictStr = "W"
+    clip_min: float | None = 0.0
 
 @dataclass
 class ForceAndSpeedToPowerAdapter(AdapterABC):
@@ -311,44 +319,42 @@ class ForceAndSpeedToPowerAdapter(AdapterABC):
     Cet adapter ignore 'source' top-level d'AdapterCfg et utilise 2 sources dans Params.
     """
     id: str
-    # champs hérités mais non utilisés ici:
     source: str
     unit_in: str
-    unit_out: str
+    unit_out: str   # <= une seule fois
 
     force_source: str
     speed_source: str
     force_unit_in: str
     speed_unit_in: str
-    out_unit: str  # (souvent 'W')
+    clip_min: float | None
 
-    # multi-entrées
     def required_sources(self) -> list[str]:
         return [self.force_source, self.speed_source]
 
     def apply_multi(self, inputs: dict[str, tuple[FArray, str]]) -> tuple[FArray, str]:
-        try:
-            f_series, f_unit = inputs[self.force_source]
-            v_series, v_unit = inputs[self.speed_source]
-        except KeyError as e:
-            raise KeyError(f"Source manquante pour adapter {self.id!r}: {e.args[0]!r}")
-
-        f_si, _ = convert_unit(f_series, unit_in=f_unit, unit_out=self.force_unit_in, quantity="force")  # -> N
-        v_si, _ = convert_unit(v_series, unit_in=v_unit, unit_out=self.speed_unit_in, quantity="speed")  # -> m/s
-
-        p = f_si * v_si  # W en SI
-        p_out, uo = convert_unit(p, unit_in="W", unit_out=self.out_unit, quantity="power")
+        f_series, f_unit = inputs[self.force_source]
+        v_series, v_unit = inputs[self.speed_source]
+        f_si, _ = convert_unit(f_series, unit_in=f_unit, unit_out=self.force_unit_in, quantity="force")
+        v_si, _ = convert_unit(v_series, unit_in=v_unit, unit_out=self.speed_unit_in, quantity="speed")
+        p_out = f_si * v_si  # en W (SI)
+        if self.clip_min is not None:
+            p_out = np.clip(p_out, float(self.clip_min), None)
+        # retourne dans l'unité déclarée
+        p_out, uo = convert_unit(p_out, unit_in="W", unit_out=self.unit_out, quantity="power")
         return p_out, uo
 
 @register("force_and_speed_to_power", ForceAndSpeedToPowerParams)
-def _build_force_and_speed_to_power(id: str, source: str, unit_in: str, unit_out: str, p: ForceAndSpeedToPowerParams) -> AdapterABC:
-    # 'source' et 'unit_in' top-level ne sont pas utilisés ici (multi-entrées)
+def _build_force_and_speed_to_power(
+        id: str, source: str, unit_in: str, unit_out: str, p: ForceAndSpeedToPowerParams
+) -> AdapterABC:
     return ForceAndSpeedToPowerAdapter(
         id=id, source=source, unit_in=unit_in, unit_out=unit_out,
         force_source=p.force_source, speed_source=p.speed_source,
         force_unit_in=p.force_unit_in, speed_unit_in=p.speed_unit_in,
-        out_unit=p.unit_out,
+        clip_min=p.clip_min,
     )
+
 
 # ============================================================
 # ---- Impl 3 — vitesse -> force , poly (mono-entrée)
@@ -356,6 +362,7 @@ def _build_force_and_speed_to_power(id: str, source: str, unit_in: str, unit_out
 
 class SpeedToForcePolyParams(AdapterParams):
     coeffs: list[float] = Field(min_length=1)
+    clip_min: float | None = 0.0  # par défaut on clippe à 0
 
 @dataclass
 class SpeedToForcePoly(AdapterABC):
@@ -368,6 +375,7 @@ class SpeedToForcePoly(AdapterABC):
     unit_in: str     # ex. 'm/s'
     unit_out: str    # ex. 'N'
     coeffs: tuple[float, ...]
+    clip_min: float | None
 
     def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
         # 1) vitesse -> unit_in
@@ -378,14 +386,19 @@ class SpeedToForcePoly(AdapterABC):
         for a in self.coeffs:
             out += a * p
             p *= v
-        # 3) force -> 'N' (ou unit_out)
-        out, uo = convert_unit(out, unit_in=self.unit_out, unit_out="N", quantity="force")
+        if self.clip_min is not None:
+            out = np.clip(out, float(self.clip_min), None)
+        out, uo = convert_unit(out, unit_in="N", unit_out=self.unit_out, quantity="force")
         return out, uo
 
+
 @register("speed_to_force_poly", SpeedToForcePolyParams)
-def _build_speed_to_force_poly(id: str, source: str, unit_in: str, unit_out: str, p: SpeedToForcePolyParams) -> AdapterABC:
+def _build_speed_to_force_poly(
+        id: str, source: str, unit_in: str, unit_out: str, p: SpeedToForcePolyParams
+) -> AdapterABC:
     return SpeedToForcePoly(
-        id=id, source=source, unit_in=unit_in, unit_out=unit_out, coeffs=tuple(p.coeffs)
+        id=id, source=source, unit_in=unit_in, unit_out=unit_out,
+        coeffs=tuple(p.coeffs), clip_min=p.clip_min
     )
 
 

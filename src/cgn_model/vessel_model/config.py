@@ -152,6 +152,29 @@ class InputBindCfg(BaseModel):
     id: StrictStr
     bus: StrictStr
     source: StrictStr  # id d’un profile OU d’un adapter
+    sign: Literal["inject", "consume", "as_is"]  # <- requis, pas de défaut
+    scale: float | None = None
+    
+    @field_validator("sign", mode="before")
+    @classmethod
+    def _norm_sign(cls, v):
+        if isinstance(v, str):
+            s = v.strip().lower()
+            synonyms = {
+                # négatif
+                "withdraw": "consume",
+                "demand":   "consume",
+                "load":     "consume",
+                "sink":     "consume",
+                # positif
+                "supply":   "inject",
+                "source":   "inject",
+                # identique
+                "asis":     "as_is",
+                "keep":     "as_is",
+            }
+            return synonyms.get(s, s)
+        return v
 
 # top level
 class VesselSectionsCfg(BaseModel):

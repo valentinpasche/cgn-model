@@ -1,7 +1,7 @@
 import yaml
 
 from cgn_model.vessel_model import Vessel
-from cgn_model.energy_solver import SolverDAG, prepare_state, run_vector
+from cgn_model.energy_solver import prepare_state, run_vector
 
 
 cfg_txt = """
@@ -56,16 +56,17 @@ adapters:
       speed_source: "speed"
       force_unit_in: "N"
       speed_unit_in: "m/s"
-      unit_out: "W"
 
 inputs:
   - id: "shaft_demand"
     bus: "shaft"
     source: "shaft_power_from_Fv"
+    sign: "consume"
 
   - id: "navops"
     bus: "elec_power"
     source: "hotel_load"
+    sign: "consume"
 
 solver:
   mode: "inverse"
