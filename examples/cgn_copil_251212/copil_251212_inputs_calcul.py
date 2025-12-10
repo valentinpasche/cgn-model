@@ -68,14 +68,14 @@ df = export_valeurs(vessel, pci_kWh_litre)
 # df.to_csv(file_csv_output, sep=";")
 
 # === Graphique du solveur, positions définies ===
-positions_noeux = { # X  ,  Y (centre à 0)
+positions_noeuds = { # X  ,  Y (centre à 0)
    'shaft_demand': [-1.00, +1.00],
    'navops':       [+1.00, +1.00],
    'shaft':        [-0.50, +0.20],
    'elec_power':   [+0.50, -0.20],
    'fuel':         [+1.00, -1.00],
 }
-vessel.solver.draw_dag(pos=positions_noeux)
+vessel.solver.draw_dag(pos=positions_noeuds)
 
 
 
