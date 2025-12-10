@@ -6,6 +6,10 @@
 
 ### Via le fichier `environment.yml` (à privilégier, essentiellement)
 
+> 1. Cloner le dépôt GitHub
+> 2. En ligne de commande (conda) : se placer à la racine du repo, là où se trouve le fichier `environment.yml`
+> 3. Executer les commandes suivantes :
+
 ```bash
 conda env create -f environment.yml
 conda activate cgnmodel
