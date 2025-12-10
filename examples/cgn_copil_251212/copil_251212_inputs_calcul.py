@@ -28,7 +28,7 @@ def export_valeurs(vessel: Vessel, pci_kWh_litre: int) -> pd.DataFrame():
     dt = vessel.dt
     vitesse = vessel.signals["speed"][0]
     puissance_arbre = vessel.signals["shaft_power_from_speed"][0]
-    temps = dt*len(vitesse)
+    temps = np.arange(0, len(vitesse), dt)
     
     fuel_net_w = vessel.solver.buses["fuel"].net_w
     fuel_cumule = bus_chem_power_to_stock_fuel(fuel_net_w, pci_kWh_litre)
@@ -65,7 +65,7 @@ df = export_valeurs(vessel, pci_kWh_litre)
 
 # # === Sauvegarde des résultats, CSV ===
 # file_csv_output = "values_copil_251212.csv"
-# df.to_csv(file_csv_output, sep=";")
+# df.to_csv(file_csv_output, sep=";", index=False)
 
 # === Graphique du solveur, positions définies ===
 positions_noeuds = { # X  ,  Y (centre à 0)
