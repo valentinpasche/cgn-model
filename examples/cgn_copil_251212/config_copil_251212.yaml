@@ -20,8 +20,8 @@ profiles:
     unit: "m/s"                       # unité du profil produit (toujours m/s depuis l'horaire)
     source: "cgn_croisieres/all"      # dataset interne avec les horaires
     select:
-      by: "course"                    # "cruise" | "course" | "leg"
-      cruise_name: "Lavaux - Haut-Lac - Grand-Lac"           # si by="cruise"
+      by: "cruise"                    # "cruise" | "course" | "leg"
+      cruise_name: "Lavaux - Haut-Lac"           # si by="cruise"
       course_no: 982                                         # si by="course"
       leg: { from_port: "Rolle", to_port: "Yvoire" }         # si by="leg"
     params:                           # paramètres du MRUA
