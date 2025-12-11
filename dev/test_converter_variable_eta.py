@@ -1,5 +1,3 @@
-import yaml
-
 from cgn_model.vessel_model import Vessel
 from cgn_model.energy_solver import run_vector
 
@@ -93,11 +91,9 @@ converters:
 """
     
 # === Test de base ===
-# 0) Initialiser le YAML
-cfg = yaml.safe_load(cfg_txt)
 
 # 1) Construire le Vessel
-vessel = Vessel.from_yaml(cfg)
+vessel = Vessel.from_yaml(cfg_txt)
 
 # 2) Câbler les inputs (prépare les états du solver et fige N)
 vessel.build_solver(verbose=True)
