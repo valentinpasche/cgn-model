@@ -25,3 +25,15 @@ force_ms_newton = polynomial.polyval(v_ms, coefs_ms_newton)
 
 p_kmh = force_base_newton * v_ms
 p_ms = force_ms_newton * v_ms
+
+
+
+coefs_eta_kmh = [-1.21965e-5, 0.000336977, 0.009896235, 0.111383068]
+coefs_eta_kmh = list(reversed(coefs_eta_kmh))
+
+eta_kmh = polynomial.polyval(v_kmh, coefs_eta_kmh)
+coefs_eta_ms = polynomial.polyfit(v_ms, eta_kmh, 3)
+
+eta_ms = polynomial.polyval(v_ms, coefs_eta_ms)
+
+
