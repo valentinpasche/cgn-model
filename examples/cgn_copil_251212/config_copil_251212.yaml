@@ -71,7 +71,7 @@ buses:
 converters:
   - id: "genset"                      # id unique de "l'objet"
     from_bus: "fuel"                  # id du bus en entrée, selon le sens physique
-    to_bus:   "elec_power"            # id du buis en sortie, selon le sens physique
+    to_bus:   "elec_power"            # id du bus en sortie, selon le sens physique
     kind: "constant_eta"              # type de convertisseur, ici rendement constant
     params:
       eta: 0.38                       # [-], rendement
