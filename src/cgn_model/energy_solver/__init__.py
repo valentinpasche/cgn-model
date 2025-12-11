@@ -4,11 +4,12 @@
 
 # Re-export the friendly public API
 from .solver_dag import SolverDAG
-from .run_dag import prepare_state, run_vector
+from .run_dag import prepare_state, run_vector, attach_eta_profile
 
 # Keep the surface area explicit
 __all__ = [
     "SolverDAG",
     "prepare_state",
     "run_vector",
+    "attach_eta_profile",
 ]

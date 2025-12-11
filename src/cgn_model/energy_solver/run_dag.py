@@ -154,3 +154,29 @@ def run_vector(solver: SolverDAG) -> None:
             bus_v.ledger[f"conv_in:{conv_id}"] += p_out
     else:
         raise NotImplementedError(f"Mode inconnu: {solver.mode!r}")
+
+# Fonction utilitaire non utilisée pour l'instant dans le pipline global.
+def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
+    """
+    Attache un profil d'efficacité η(t) à un convertisseur 'variable_eta'.
+    - eta_series : array-like 1D, valeurs attendues ~[0,1]
+    - A appeler après avoir construit les inputs (pour connaître N), et avant run_vector().
+    """
+    conv = solver.converters.get(conv_id)
+    if conv is None:
+        raise KeyError(f"Convertisseur inconnu: {conv_id!r}")
+    
+    if not hasattr(conv, "eta_profile"):
+        raise TypeError(
+            f"Le convertisseur {conv_id!r} n'accepte pas de profil η. "
+            "Utilise kind='variable_eta'."
+        )
+    
+    eta = np.asarray(eta_series, dtype=np.float64)
+    if eta.ndim != 1:
+        raise ValueError("eta_series doit être un vecteur 1D")
+    if (eta < 0).any() or (eta > 1).any():
+        # on tolère des écarts si tu veux, sinon on borne
+        eta = np.clip(eta, 0.0, 1.0)
+    
+    conv.eta_profile = eta
