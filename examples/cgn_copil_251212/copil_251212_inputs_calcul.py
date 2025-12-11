@@ -16,34 +16,17 @@ def read_yaml(file: str):
         except yaml.YAMLError as exc:
             print(exc)
             
-def bus_chem_power_to_stock_fuel(p_chem_net, pci_fuel):
-    ureg = UnitRegistry()
-    pci_fuel = pci_fuel * (ureg.kWh / ureg.liter) # (kWh / litre)
-    pci = pci_fuel.to("W*s/m^3").magnitude # (Ws / m^3)
-    tot_fuel = np.cumsum(p_chem_net / pci)
-    return tot_fuel
-
-def export_valeurs(vessel: Vessel, pci_kWh_litre: int) -> pd.DataFrame():
-    
-    dt = vessel.dt
-    vitesse = vessel.signals["speed"][0]
-    puissance_arbre = vessel.signals["shaft_power_from_speed"][0]
-    temps = np.arange(0, len(vitesse), dt)
-    
-    fuel_net_w = vessel.solver.buses["fuel"].net_w
-    fuel_cumule = bus_chem_power_to_stock_fuel(fuel_net_w, pci_kWh_litre)
-    
-    data = {
-        "temps (s)": temps,
-        "speed (m/s)": vitesse,
-        "power_shaft (W)": puissance_arbre,
-        "fuel_cumul (m^3)": fuel_cumule,
-    }
-    
-    return pd.DataFrame(data)
-
-
-
+def bus_chem_power_to_stock_fuel(p_chem_net_w: np.ndarray, pci_kwh_per_l: float, dt_s: float) -> np.ndarray:
+    """
+    p_chem_net_w : profil de puissance chimique nette [W] (signe conforme à ta convention)
+    pci_kwh_per_l: pouvoir calorifique inférieur [kWh / litre]
+    dt_s         : pas de temps [s]
+    retour       : volume cumulé [m^3]
+    """
+    pci = (pci_kwh_per_l * (ureg.kWh / ureg.liter)).to("W*s/m^3").magnitude  # [Ws/m^3]
+    # volume instantané [m^3] = (W * s) / (Ws/m^3)
+    vol_inst_m3 = (p_chem_net_w * dt_s) / pci
+    return np.cumsum(vol_inst_m3)
 
     
 
@@ -60,8 +43,25 @@ mapping = vessel.apply_inputs_to_solver(verbose=True)
 run_vector(vessel.solver)
 
 # === Export des résultats, DataFrame ===
+ureg = UnitRegistry()
 pci_kWh_litre = 9.8 # (kWh / litre)
-df = export_valeurs(vessel, pci_kWh_litre)
+
+vitesse_ms = vessel.signals["speed"][0]
+puissance_arbre_w = vessel.signals["shaft_power_from_speed"][0]
+temps = np.arange(len(vitesse_ms)) * vessel.dt
+
+fuel_net_w = vessel.solver.buses["fuel"].net_w
+fuel_cumule_mc = bus_chem_power_to_stock_fuel(fuel_net_w, pci_kWh_litre, vessel.dt)
+fuel_cumule_l = fuel_cumule_mc * -1000
+
+data = {
+    "temps (s)": temps,
+    "speed (m/s)": vitesse_ms,
+    "power_shaft (W)": puissance_arbre_w,
+    "fuel_cumul (m^3)": fuel_cumule_mc,
+    "fuel_consom_cumul (litre)": fuel_cumule_l,
+}
+df = pd.DataFrame(data)
 
 # # === Sauvegarde des résultats, CSV ===
 # file_csv_output = "values_copil_251212.csv"
@@ -76,9 +76,3 @@ positions_noeuds = { # X  ,  Y (centre à 0)
    'fuel':         [+1.00, -1.00],
 }
 vessel.solver.draw_dag(pos=positions_noeuds)
-
-
-
-
-
-
