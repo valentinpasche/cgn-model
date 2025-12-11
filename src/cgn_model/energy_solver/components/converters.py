@@ -126,6 +126,12 @@ class ConverterABC(ABC):
     @abstractmethod
     def inverse(self, p_out_w: FArray) -> FArray: ...
 
+# --- petit mixin dataclass pour les logs communs ---
+@dataclass
+class LoggedConverter:
+    p_in_w:  FArray | None = field(default=None, init=False)   # retrait from_bus
+    p_out_w: FArray | None = field(default=None, init=False)   # injection to_bus
+
 # ---- registre
 class ConverterParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -160,7 +166,7 @@ class ConstantEtaParams(ConverterParams):
     eta: float = Field(gt=0, le=1, allow_inf_nan=False)
 
 @dataclass
-class ConstantEtaConverter(ConverterABC):
+class ConstantEtaConverter(LoggedConverter, ConverterABC):
     """
     p_in_w : retrait appliqué sur from_bus
     p_out_w : injection effectuée sur to_bus
@@ -169,8 +175,8 @@ class ConstantEtaConverter(ConverterABC):
     from_bus: str
     to_bus: str
     eta: float
-    p_in_w:  FArray | None = field(default=None, init=False)
-    p_out_w: FArray | None = field(default=None, init=False)
+    # p_in_w / p_out_w hérités de LoggedConverter
+    
     def forward(self, p_in_w: FArray) -> FArray:  return p_in_w * self.eta
     def inverse(self, p_out_w: FArray) -> FArray: return p_out_w / self.eta
 
@@ -181,4 +187,55 @@ def build_constant_eta(id: str, from_bus: str, to_bus: str, params: ConstantEtaP
         id=id, from_bus=from_bus, to_bus=to_bus, eta=params.eta
     )
 
-# ------------------------------------------------------------
+# ============================================================
+# ----    Impl 2 - Convertisseur à rendement variable
+# ============================================================
+
+class VariableEtaParams(ConverterParams):
+    eta_default: float = Field(gt=0, le=1, allow_inf_nan=False)
+    eta_source: str | None = None
+
+@dataclass
+class VariableEtaConverter(LoggedConverter, ConverterABC):
+    """
+    Rendement variable dans le temps via eta_profile (optionnel).
+    - Si eta_profile est None -> fallback sur eta_default constant.
+    - Sinon forward/inverse utilisent eta_profile[t].
+    """
+    id: str
+    from_bus: str
+    to_bus: str
+    eta: float # fallback constant (eta_default)
+    eta_profile: FArray | None = field(default=None, init=False)
+    eta_source: str | None = None
+    _eta_warned: bool = field(default=False, init=False, repr=False)
+    # p_in_w / p_out_w hérités de LoggedConverter
+
+    def _eta_vec(self, N: int) -> FArray:
+        if self.eta_profile is None:
+            if not self._eta_warned:
+                print("variable_eta: fallback sur eta_default (profil η non attaché).")
+                self._eta_warned = True
+            return np.full(N, float(self.eta), dtype=np.float64)
+        if self.eta_profile.ndim != 1:
+            raise ValueError("eta_profile doit être 1D")
+        if self.eta_profile.shape[0] != N:
+            raise ValueError(f"eta_profile taille {self.eta_profile.shape} ≠ {(N,)}")
+        return np.clip(self.eta_profile, 1e-6, 1.0)  # garde-fou
+
+    def forward(self, p_in_w: FArray) -> FArray:
+        eta_t = self._eta_vec(len(p_in_w))
+        return p_in_w * eta_t
+
+    def inverse(self, p_out_w: FArray) -> FArray:
+        eta_t = self._eta_vec(len(p_out_w))
+        return p_out_w / eta_t
+
+@register("variable_eta", VariableEtaParams)
+def build_variable_eta(id: str, from_bus: str, to_bus: str, params: VariableEtaParams) -> ConverterABC:
+    return VariableEtaConverter(
+        id=id, from_bus=from_bus, to_bus=to_bus,
+        eta=params.eta_default,
+        eta_source=params.eta_source
+    )
+
