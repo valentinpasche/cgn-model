@@ -391,7 +391,6 @@ class SpeedToForcePoly(AdapterABC):
         out, uo = convert_unit(out, unit_in="N", unit_out=self.unit_out, quantity="force")
         return out, uo
 
-
 @register("speed_to_force_poly", SpeedToForcePolyParams)
 def _build_speed_to_force_poly(
         id: str, source: str, unit_in: str, unit_out: str, p: SpeedToForcePolyParams
@@ -399,6 +398,45 @@ def _build_speed_to_force_poly(
     return SpeedToForcePoly(
         id=id, source=source, unit_in=unit_in, unit_out=unit_out,
         coeffs=tuple(p.coeffs), clip_min=p.clip_min
+    )
+
+# ============================================================
+# ---- Impl 4 — vitesse -> rendement , poly (mono-entrée), pour convertisseur solverDag, etc.
+# ============================================================
+
+class SpeedToEtaPolyParams(AdapterParams):
+    coeffs: list[float] = Field(min_length=1)
+
+@dataclass
+class SpeedToEtaPoly(AdapterABC):
+    """
+    eta(v) = a0 + a1*v + a2*v^2 + ... 
+    Entrée: vitesse (unit_in, p.ex. 'm/s'), Sortie: rendement ('-').
+    """
+    id: str
+    source: str
+    unit_in: str     # ex. 'm/s'
+    unit_out: str    # nd, ex. '-', pour satisfaire le schéma de base pydantic
+    coeffs: tuple[float, ...]
+
+    def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
+        # 1) vitesse -> unit_in
+        v, _ = convert_unit(series, unit_in=unit, unit_out=self.unit_in, quantity="speed")
+        # 2) polynôme
+        eta_profile = np.zeros_like(v, dtype=np.float64)
+        p = np.ones_like(v, dtype=np.float64)
+        for a in self.coeffs:
+            eta_profile += a * p
+            p *= v
+        return eta_profile, "-"
+
+@register("speed_to_eta_poly", SpeedToEtaPolyParams)
+def _build_speed_to_eta_poly(
+        id: str, source: str, unit_in: str, unit_out: str, p: SpeedToEtaPolyParams,
+) -> AdapterABC:
+    return SpeedToEtaPoly(
+        id=id, source=source, unit_in=unit_in, unit_out=unit_out,
+        coeffs=tuple(p.coeffs)
     )
 
 
