@@ -6,15 +6,6 @@ from typing import Mapping
 from cgn_model.energy_solver import SolverDAG
 
 
-# def _check_and_get_len(profiles: Mapping[str, np.ndarray]) -> int:
-#     if not profiles:
-#         raise ValueError("Aucun profil d'input fourni.")
-#     lens = {k: np.asarray(v).shape for k, v in profiles.items()}
-#     shapes = set(lens.values())
-#     if len(shapes) != 1 or len(next(iter(shapes))) != 1:
-#         raise ValueError(f"Tous les profils doivent être 1D et de même taille, reçu: {lens}")
-#     return next(iter(shapes))[0]
-
 def _pos(x: np.ndarray) -> np.ndarray:
     return np.maximum(x, 0.0)
 
@@ -163,19 +154,3 @@ def run_vector(solver: SolverDAG) -> None:
             bus_v.ledger[f"conv_in:{conv_id}"] += p_out
     else:
         raise NotImplementedError(f"Mode inconnu: {solver.mode!r}")
-
-
-
-""" Info GPT pour la suite (13.11.2025)
-
-Notes / conventions
-- Signes : + injecte sur un bus, - consomme.
-- inverse : on “remonte” et on couvre les déficits à chaque étape (plus simple pour des demandes imposées).
-- forward : on “descend” et on pousse les surplus (capés par le besoin aval).
-- Résidus possibles : s’il reste un déficit en racine (aucun amont) → le net_w final sera encore < 0 (c’est un besoin non satisfait). Idem pour un surplus non évacué.
-
-C’est volontairement minimal. Quand tu voudras, faire ce qui est en dessous, on étendra ce moteur.:
-- contraindre des puissances max par convertisseur
-- gérer des stockages (états dynamiques)
-- enregistrer des bilans plus riches
-"""
