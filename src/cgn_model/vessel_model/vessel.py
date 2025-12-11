@@ -664,36 +664,120 @@ class Vessel:
                 )
     
         return {k: v[1] for k, v in full.items()} if profiles_only else full
-
+    
+    # -------- Connexion des inputs avec le solver, via `prepare_state` --------
     def apply_inputs_to_solver(
         self,
         *,
         strict: bool = True,
         verbose: bool = False,
         auto_convert: bool = False,
-    ) -> dict[str, FArray] | dict[str, tuple[str, FArray]]:
+        eta_autowire: bool = False,
+        clip_eta_profile: bool = True,
+    ) -> int:
         """
-        Valide et injecte les inputs dans le solver via `prepare_state`.
-        Retourne la valeur de retour de `prepare_state` (p.ex. nombre d’inputs appliqués).
+        Construit et injecte les inputs (W) via `prepare_state`. Optionnellement,
+        autowire les profils η(t) dimensionnels.
+        Retourne N.
         """
-        # construit un mapping id -> array (avec validation bus)
-        profiles: dict[str, np.ndarray] = self.build_solver_inputs(
+        profiles = self.build_solver_inputs(
             profiles_only=True, verbose=verbose, auto_convert=auto_convert,
-        )  # id -> arr_W
+        )
 
-        # (optionnel) vérifications supplémentaires
         if strict:
-            # alignement des longueurs (si pertinent pour ta simu vectorielle)
             lengths = {k: len(v) for k, v in profiles.items()}
             if len(set(lengths.values())) > 1:
                 raise ValueError(f"Profils de longueurs différentes: {lengths}")
 
-        # injection dans le solver
-        # import local pour éviter un import circulaire si tu réexportes prepare_state
         from cgn_model.energy_solver import prepare_state
+        N = prepare_state(self.solver, profiles)
 
-        return prepare_state(self.solver, profiles)
+        if eta_autowire:
+            self.attach_converter_eta_profiles(clip=clip_eta_profile, verbose=verbose)
 
+        return N
+    
+    # -------- Connexion des signaux avec le solver, signaux adimensionnels --------
+    def attach_converter_eta_profiles(
+        self,
+        *,
+        clip: bool = True,        # clip η dans [0,1]
+        check_len: bool = True,   # vérifie len(η) == N si N connu
+        verbose: bool = False,
+    ) -> dict[str, str]:
+        """
+        Autowire des profils η(t) dimensionnels ('-') sur les convertisseurs qui
+        déclarent un 'eta_source'. À appeler idéalement après apply_inputs_to_solver().
+    
+        Retourne: dict { conv_id: eta_source_id } pour les attaches réussies.
+        """
+        if self.signals is None:
+            raise RuntimeError("Vessel non initialisé (signals manquants).")
+
+        # N (si déjà fixé par prepare_state)
+        N: int | None = None
+        for b in self.solver.buses.values():
+            if b.net_w is not None:
+                N = len(b.net_w)
+                break
+
+        # Collecte des signaux dimensionnels ('-')
+        eta_signals: dict[str, FArray] = {}
+        for sid, (arr, unit) in self.signals.items():
+            if unit == "-":
+                eta_signals[sid] = np.asarray(arr, dtype=np.float64).reshape(-1)
+
+        attached: dict[str, str] = {}
+
+        for conv_id, conv in self.solver.converters.items():
+            src = getattr(conv, "eta_source", None)
+            if not src:
+                continue  # ce convertisseur n'attend pas de profil η
+
+            series = eta_signals.get(src)
+            if series is None:
+                warnings.warn(f"[eta-autowire] {conv_id}: source '{src}' introuvable → fallback eta_default")
+                continue
+
+            if series.ndim != 1:
+                raise ValueError(f"[eta-autowire] {conv_id}: eta '{src}' doit être 1D, shape={series.shape}")
+
+            if check_len and N is not None and series.shape[0] != N:
+                raise ValueError(
+                    f"[eta-autowire] {conv_id}: taille η '{src}' = {series.shape[0]} ≠ N={N}"
+                )
+
+            if clip:
+                series = np.clip(series, 1e-6, 1.0)
+
+            if not hasattr(conv, "eta_profile"):
+                warnings.warn(f"[eta-autowire] {conv_id}: pas d'attribut 'eta_profile' → ignoré")
+                continue
+
+            conv.eta_profile = series
+            attached[conv_id] = src
+            if verbose:
+                print(f"[eta-autowire] {conv_id} ← {src} (len={len(series)})")
+
+        return attached
+
+        
+    # --- Orchestrateur global pour la construction du SolverDAG ---
+    def build_solver(
+        self,
+        *,
+        verbose: bool = False,
+        auto_convert_w_profile: bool = False,
+        clip_eta_profile: bool = True,
+    ) -> None:
+        self.apply_inputs_to_solver(
+            verbose=verbose,
+            auto_convert=auto_convert_w_profile,
+            eta_autowire=True,                # <- direct ici
+            clip_eta_profile=clip_eta_profile,
+        )
+        
+        
 
 # --------------------------- Demo ---------------------------
 if __name__ == "__main__":
