@@ -88,15 +88,7 @@ converters:
 storages:
   - id: "fuel_tank"
     bus: "fuel"           # le bus chimique du DAG
-    tally: "consume"      # on intègre la conso (parties négatives sur le bus)
-    vector:
-      kind: "liquid_pci_per_litre"
-      pci_kWh_per_litre: 9.8      # ex. mazout (à adapter)
-      density_kg_per_m3: 840      # optionnel si tu veux aussi la masse
-    # vector:
-    #   kind: "lhv_per_kg"
-    #   lhv_MJ_per_kg: 42.6
-    #   density_kg_per_m3: 840
+    vecteur: "diesel"
 """
     
 # === Test de base ===
@@ -117,7 +109,5 @@ stor = vessel.tally_storages()
 
 # 5) Accès résultats
 res = stor["fuel_tank"]
-print("E totale (kWh) :", res.total_kWh)
-print("Volume (m3)    :", res.volume_m3)
-print("Masse (kg)     :", res.mass_kg)
+res.summary
 t = vessel.t  # vecteur temps [s] si besoin de tracer res.energy_kWh_cum
