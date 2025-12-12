@@ -93,11 +93,10 @@ storages:
       kind: "liquid_pci_per_litre"
       pci_kWh_per_litre: 9.8      # ex. mazout (à adapter)
       density_kg_per_m3: 840      # optionnel si tu veux aussi la masse
-   # vector:
-   #   kind: "lhv_per_kg"
-   #   lhv_MJ_per_kg: 42.6
-   #   density_kg_per_m3: 840
-
+    # vector:
+    #   kind: "lhv_per_kg"
+    #   lhv_MJ_per_kg: 42.6
+    #   density_kg_per_m3: 840
 """
     
 # === Test de base ===
