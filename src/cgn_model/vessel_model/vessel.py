@@ -22,9 +22,11 @@ from cgn_model.vessel_model.config import (
     ProfileCfg,            # Union discriminée: constant/series/file/nav_speed
     NavSelect,
     NavParams,
+    StorageCfg,
 )
 from cgn_model.vessel_model.adapters import AdapterABC, build_adapter_from_cfg
 from cgn_model.navigation import Croisiere, SpeedProfileParams
+from cgn_model.vessel_model.storage import compute_storage_from_bus, StorageResult
 
 type FArray = NDArray[np.floating]
 type SolverMode = Mode
@@ -334,7 +336,18 @@ class Vessel:
     adapters: dict[str, AdapterABC] | None = None
     input_binds: list[InputBind] | None = None
     signals: dict[str, tuple[FArray, str]] | None = None  # profils bruts + adapters matérialisés
-
+    storages_cfg: list[StorageCfg] | None = None
+    storages_results: dict[str, StorageResult] | None = None
+    
+    @property
+    def t(self):
+        """Vecteur temps [s] si les états du solver sont initialisés."""
+        for b in self.solver.buses.values():
+            if b.net_w is not None:
+                N = len(b.net_w)
+                return np.arange(N, dtype=float) * float(self.dt)
+        return None
+    
     # -------- Construction principale --------
     @classmethod
     def from_yaml(cls, cfg: str | dict[str, Any]) -> "Vessel":
@@ -356,6 +369,8 @@ class Vessel:
         profiles    = cls._build_profiles(sections.profiles, dt)
         adapters    = cls._build_adapters(sections.adapters)
         input_binds = cls._build_input_binds(sections.inputs)
+        # Garde la config des storages
+        storages_cfg = sections.storages
 
         # 4) Matérialiser tous les signaux (profiles bruts + adapters)
         signals = cls._materialize_signals(profiles, adapters)
@@ -369,6 +384,7 @@ class Vessel:
             adapters=adapters,
             input_binds=input_binds,
             signals=signals,
+            storages_cfg=storages_cfg,
         )
 
     # -------- Parse / Validate (métadonnées) --------
@@ -456,9 +472,10 @@ class Vessel:
 
         return {
             "simulation": pick(source.get("simulation", {})),
-            "profiles":   _ensure_list(pick(source.get("profiles")),   "profiles"),
-            "adapters":   _ensure_list(pick(source.get("adapters")),   "adapters"),
-            "inputs":     _ensure_list(pick(source.get("inputs")),     "inputs"),  # bindings côté vessel
+            "profiles":   _ensure_list(pick(source.get("profiles")), "profiles"),
+            "adapters":   _ensure_list(pick(source.get("adapters")), "adapters"),
+            "inputs":     _ensure_list(pick(source.get("inputs")),   "inputs"),  # bindings côté vessel
+            "storages":   _ensure_list(pick(source.get("storages")), "storages"),
         }
 
     # -------- Builders runtime --------    
@@ -761,7 +778,6 @@ class Vessel:
 
         return attached
 
-        
     # --- Orchestrateur global pour la construction du SolverDAG ---
     def build_solver(
         self,
@@ -776,8 +792,41 @@ class Vessel:
             eta_autowire=True,                # <- direct ici
             clip_eta_profile=clip_eta_profile,
         )
-        
-        
+
+    # --- Gestion des stockages en sortie du SolverDAG ---
+    def tally_storages(self, *, strict: bool = True) -> dict[str, StorageResult]:
+        """
+        Calcule les bilans d'énergie (et conversions volume/masse si vector défini)
+        pour chaque storage déclaré. À appeler après run_vector(self.solver).
+        """
+        if self.storages_cfg is None:
+            self.storages_results = {}
+            return {}
+
+        # récupère la longueur/state depuis un bus quelconque
+        N = None
+        for b in self.solver.buses.values():
+            if b.net_w is not None:
+                N = len(b.net_w)
+                break
+        if N is None:
+            raise RuntimeError("Solver non initialisé/exec (aucun état de bus). Exécute run_vector() d’abord.")
+
+        out: dict[str, StorageResult] = {}
+        for sc in self.storages_cfg:
+            bus = self.solver.buses.get(sc.bus)
+            if bus is None or bus.net_w is None:
+                raise KeyError(f"Storage {sc.id!r}: bus inconnu ou sans état: {sc.bus!r}")
+            if strict and len(bus.net_w) != N:
+                raise ValueError(f"Storage {sc.id!r}: taille bus {len(bus.net_w)} != {N}")
+
+            res = compute_storage_from_bus(storage=sc, bus_power_W=bus.net_w, dt=self.dt)
+            out[sc.id] = res
+
+        self.storages_results = out
+        return out
+
+
 
 # --------------------------- Demo ---------------------------
 if __name__ == "__main__":

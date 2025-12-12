@@ -176,6 +176,35 @@ class InputBindCfg(BaseModel):
             return synonyms.get(s, s)
         return v
 
+# --- Storage / Vector specs ---
+
+Tally = Literal["consume", "inject"]
+
+class VectorByPCIperLitre(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["liquid_pci_per_litre"] = "liquid_pci_per_litre"
+    pci_kWh_per_litre: float = Field(gt=0)
+    density_kg_per_m3: float | None = Field(default=None, gt=0)
+
+class VectorByLHVmass(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["lhv_per_kg"] = "lhv_per_kg"
+    lhv_MJ_per_kg: float = Field(gt=0)
+    density_kg_per_m3: float | None = Field(default=None, gt=0)
+
+VectorSpec = Annotated[
+    VectorByPCIperLitre | VectorByLHVmass,
+    Field(discriminator="kind")
+]
+
+class StorageCfg(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: StrictStr
+    bus: StrictStr
+    tally: Tally = "consume"              # par défaut on suit la conso
+    vector: VectorSpec | None = None      # optionnel : conversion énergie -> volume/masse
+
+
 # top level
 class VesselSectionsCfg(BaseModel):
     """
@@ -190,6 +219,7 @@ class VesselSectionsCfg(BaseModel):
     profiles: list[ProfileCfg] = []
     adapters: list[AdapterCfg] = []
     inputs:   list[InputBindCfg] = []
+    storages: list[StorageCfg] = []
 
     @model_validator(mode="after")
     def cross_checks(self):
@@ -199,15 +229,18 @@ class VesselSectionsCfg(BaseModel):
         prof_ids = [p.id for p in self.profiles]
         adap_ids = [a.id for a in self.adapters]
         inp_ids  = [i.id for i in self.inputs]
+        stor_ids = [s.id for s in self.storages]
 
         dup_profiles = dups(prof_ids)
         dup_adapters = dups(adap_ids)
         dup_inputs   = dups(inp_ids)
+        dup_storages = dups(stor_ids)
 
         errs: list[str] = []
         if dup_profiles: errs.append(f"IDs dupliqués dans profiles: {dup_profiles}")
         if dup_adapters: errs.append(f"IDs dupliqués dans adapters: {dup_adapters}")
         if dup_inputs:   errs.append(f"IDs dupliqués dans inputs: {dup_inputs}")
+        if dup_storages: errs.append(f"IDs dupliqués dans storages: {dup_storages}")
 
         # --- Collision d'espace de noms des signaux (profile vs adapter)
         prof_set = set(prof_ids)
