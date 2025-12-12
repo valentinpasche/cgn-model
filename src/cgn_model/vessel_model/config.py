@@ -9,13 +9,14 @@ type VesselType = Literal["DE", "steam", "undefined"]
 __all__ = ["VesselType", "VesselCfg", "ProfileCfg", "AdapterCfg", "InputBindCfg"]
 
 
+# ---- Adaptateurs multi-sources
 # Déclare quels adapters sont multi-entrées et quelles clés params contiennent leurs sources
 MULTISOURCE_KINDS: dict[str, tuple[str, ...]] = {
     "force_and_speed_to_power": ("force_source", "speed_source"),
     # ajouter ici d’autres kinds multi-entrées si tu en crées
 }
 
-
+# ---- Vessel / ammont
 class VesselCfg(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: StrictStr
@@ -176,36 +177,22 @@ class InputBindCfg(BaseModel):
             return synonyms.get(s, s)
         return v
 
-# --- Storage / Vector specs ---
-
-Tally = Literal["consume", "inject"]
-
-class VectorByPCIperLitre(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    kind: Literal["liquid_pci_per_litre"] = "liquid_pci_per_litre"
-    pci_kWh_per_litre: float = Field(gt=0)
-    density_kg_per_m3: float | None = Field(default=None, gt=0)
-
-class VectorByLHVmass(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    kind: Literal["lhv_per_kg"] = "lhv_per_kg"
-    lhv_MJ_per_kg: float = Field(gt=0)
-    density_kg_per_m3: float | None = Field(default=None, gt=0)
-
-VectorSpec = Annotated[
-    VectorByPCIperLitre | VectorByLHVmass,
-    Field(discriminator="kind")
-]
-
+# ---- Storage / Vector specs à définir ---
 class StorageCfg(BaseModel):
+    """
+    Déclare un stockage à partir d’un bus du solver.
+    - id      : identifiant du stockage (côté vessel)
+    - bus     : id du bus à intégrer (côté solver)
+    - vecteur : (optionnel) identifiant d’un vecteur énergétique (diesel, H2, battery…)
+                Non utilisé par le tally générique; réservé pour un enrichissement ultérieur.
+    """
     model_config = ConfigDict(extra="forbid")
+
     id: StrictStr
     bus: StrictStr
-    tally: Tally = "consume"              # par défaut on suit la conso
-    vector: VectorSpec | None = None      # optionnel : conversion énergie -> volume/masse
+    vecteur: StrictStr | None = None
 
-
-# top level
+# ---- top level
 class VesselSectionsCfg(BaseModel):
     """
     Valide la cohérence des sections 'profiles' / 'adapters' / 'inputs' (hors solver).

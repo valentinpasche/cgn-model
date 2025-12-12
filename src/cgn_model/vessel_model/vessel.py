@@ -26,7 +26,7 @@ from cgn_model.vessel_model.config import (
 )
 from cgn_model.vessel_model.adapters import AdapterABC, build_adapter_from_cfg
 from cgn_model.navigation import Croisiere, SpeedProfileParams
-from cgn_model.vessel_model.storage import compute_storage_from_bus, StorageResult
+from cgn_model.vessel_model.storage import StorageResult
 
 type FArray = NDArray[np.floating]
 type SolverMode = Mode
@@ -337,7 +337,7 @@ class Vessel:
     input_binds: list[InputBind] | None = None
     signals: dict[str, tuple[FArray, str]] | None = None  # profils bruts + adapters matérialisés
     storages_cfg: list[StorageCfg] | None = None
-    storages_results: dict[str, StorageResult] | None = None
+    storages: dict[str, StorageResult] | None = None
     
     @property
     def t(self):
@@ -370,7 +370,9 @@ class Vessel:
         adapters    = cls._build_adapters(sections.adapters)
         input_binds = cls._build_input_binds(sections.inputs)
         # Garde la config des storages
-        storages_cfg = sections.storages
+        storages_raw = getattr(sections, "storages", None)
+        storages_cfg = list(storages_raw) if storages_raw is not None else []
+        storages=None
 
         # 4) Matérialiser tous les signaux (profiles bruts + adapters)
         signals = cls._materialize_signals(profiles, adapters)
@@ -385,6 +387,7 @@ class Vessel:
             input_binds=input_binds,
             signals=signals,
             storages_cfg=storages_cfg,
+            storages=storages,
         )
 
     # -------- Parse / Validate (métadonnées) --------
@@ -794,37 +797,60 @@ class Vessel:
         )
 
     # --- Gestion des stockages en sortie du SolverDAG ---
-    def tally_storages(self, *, strict: bool = True) -> dict[str, StorageResult]:
+    def tally_storages(
+        self,
+        *,
+        overwrite: bool = True,
+        require_inputs_applied: bool = True,
+        require_solver_run: bool = False,  # laisse False si tu veux pouvoir tally avant run_vector()
+    ) -> dict[str, StorageResult]:
         """
-        Calcule les bilans d'énergie (et conversions volume/masse si vector défini)
-        pour chaque storage déclaré. À appeler après run_vector(self.solver).
+        Construit les StorageResult à partir des bus du solver référencés dans storages_cfg.
+        - require_inputs_applied: si True, exige que le solver ait au moins des net_w initialisés (via apply_inputs_to_solver()).
+        - require_solver_run: si True, tu peux choisir d’appeler run_vector() avant, pour tallier l'état "résolu".
+        Retourne un dict id -> StorageResult et alimente self.storages / self.storages_by_id.
         """
         if self.storages_cfg is None:
-            self.storages_results = {}
-            return {}
+            self.storages_cfg = []
+        results: dict[str, StorageResult] = {}
 
-        # récupère la longueur/state depuis un bus quelconque
-        N = None
-        for b in self.solver.buses.values():
-            if b.net_w is not None:
-                N = len(b.net_w)
-                break
-        if N is None:
-            raise RuntimeError("Solver non initialisé/exec (aucun état de bus). Exécute run_vector() d’abord.")
+        # Vérif minimale d’état solver
+        if require_inputs_applied:
+            any_init = any(b.net_w is not None for b in self.solver.buses.values())
+            if not any_init:
+                raise RuntimeError(
+                    "tally_storages() : le solver ne semble pas initialisé. "
+                    "Appelle d’abord Vessel.apply_inputs_to_solver()."
+                )
 
-        out: dict[str, StorageResult] = {}
-        for sc in self.storages_cfg:
-            bus = self.solver.buses.get(sc.bus)
-            if bus is None or bus.net_w is None:
-                raise KeyError(f"Storage {sc.id!r}: bus inconnu ou sans état: {sc.bus!r}")
-            if strict and len(bus.net_w) != N:
-                raise ValueError(f"Storage {sc.id!r}: taille bus {len(bus.net_w)} != {N}")
+        for scfg in self.storages_cfg:
+            bus = self.solver.buses.get(scfg.bus)
+            if bus is None:
+                raise KeyError(f"Storage {scfg.id!r}: bus inconnu {scfg.bus!r} dans le solver.")
+            if bus.net_w is None:
+                raise RuntimeError(
+                    f"Storage {scfg.id!r}: bus {scfg.bus!r} n’a pas de net_w. "
+                    "As-tu appelé apply_inputs_to_solver() (et éventuellement run_vector()) ?"
+                )
 
-            res = compute_storage_from_bus(storage=sc, bus_power_W=bus.net_w, dt=self.dt)
-            out[sc.id] = res
+            res = StorageResult.from_bus(
+                id=scfg.id,
+                bus_id=scfg.bus,
+                bus_net_w=bus.net_w,
+                dt=self.dt,
+                vecteur=scfg.vecteur,  # juste mémorisé, pas utilisé par le tally générique
+            )
+            results[scfg.id] = res
 
-        self.storages_results = out
-        return out
+        # Alimente les attributs
+        if overwrite or self.storages is None:
+            self.storages = dict(results)
+        else:
+            # merge doux
+            self.storages.update(results)
+
+        return results
+
 
 
 
