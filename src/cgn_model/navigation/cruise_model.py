@@ -766,7 +766,7 @@ if __name__ == "__main__":
     #     Croisiere.view_croisiere(c)
     
     # # ---- Test totaux croisières
-    # c = croisieres[0]
+    c = croisieres[0]
 
     # print(c.nom)
     # print("Total km         :", c.total_km)
