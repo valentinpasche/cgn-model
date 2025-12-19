@@ -25,7 +25,7 @@ profiles:
     params:
       acc: 0.05            # [m/s²]
       dec: 0.05            # [m/s²]
-      v_croisiere: 7.0     # [m/s]
+      v_croisiere: 7     # [m/s]
       allow_delay: true
 
 adapters:
@@ -33,7 +33,7 @@ adapters:
     kind: "speed_to_power_poly"
     source: "speed"
     unit_in: "m/s"
-    unit_out: "W" 
+    unit_out: "W"
     params:
       coeffs: [0.0, -209.0, 1904.4, 531.36, 93.312]  # coefficients "m/s" to  "W"
 
@@ -111,3 +111,6 @@ stor = vessel.tally_storages()
 res = stor["fuel_tank"]
 res.summary
 t = vessel.t  # vecteur temps [s] si besoin de tracer res.energy_kWh_cum
+
+df = res.to_dataframe()
+dct = res.summary_dict()
