@@ -248,9 +248,9 @@ storages:
 
 ### Adapters
 - speed_to_power_poly
-  - params: {`coeffs`: list[float], `clip_min`: float | None}
+  - params: {coeffs: list[float], clip_min: float | None}
 - force_and_speed_to_power
-  - params: {`force_source`, `speed_source`, `force_unit_in`, `speed_unit_in`, `clip_min`}
+  - params: {force_source, speed_source, force_unit_in, speed_unit_in, clip_min}
 - speed_to_force_poly
   - params: {coeffs: list[float], clip_min: float | None}
 - speed_to_eta_poly
