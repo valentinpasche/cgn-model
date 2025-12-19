@@ -1,5 +1,9 @@
 # cgn_model/vessel_model/config.py
 
+"""
+Schemas Pydantic des sections vessel (profiles, adapters, inputs, storages).
+"""
+
 from collections import Counter, deque
 from typing import Literal, Any, Annotated
 from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, field_validator
@@ -18,6 +22,9 @@ MULTISOURCE_KINDS: dict[str, tuple[str, ...]] = {
 
 # ---- Vessel / ammont
 class VesselCfg(BaseModel):
+    """
+    Metadonnees du vessel.
+    """
     model_config = ConfigDict(extra="forbid")
     name: StrictStr
     vessel_type: VesselType
@@ -28,11 +35,33 @@ class VesselCfg(BaseModel):
 
 # Simulation au global
 class SimulationCfg(BaseModel):
+    """
+    Parametres globaux de simulation.
+
+    Attributes
+    ----------
+    dt : float
+        Pas de temps en secondes.
+    """
     model_config = ConfigDict(extra="forbid")
     dt: Annotated[float, Field(gt=0)] = 1.0
     
 # profiles
 class ProfileCfgBase(BaseModel):
+    """
+    Base commune des profils.
+
+    Attributes
+    ----------
+    id : str
+        Identifiant unique.
+    unit : str
+        Unite declaree.
+    data : list[float] | None
+        Serie explicite (si applicable).
+    master : bool
+        Indique le profil maitre pour la longueur N.
+    """
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     unit: StrictStr
@@ -40,14 +69,23 @@ class ProfileCfgBase(BaseModel):
     master: bool = False
 
 class ConstantProfileCfg(ProfileCfgBase):
+    """
+    Profil constant.
+    """    
     kind: Literal["constant"]
     value: float | list[float]  # len==1 autorisé
 
 class SeriesProfileCfg(ProfileCfgBase):
+    """
+    Profil serie explicite.
+    """    
     kind: Literal["series"]
     data: list[float]
 
 class FileProfileCfg(ProfileCfgBase):
+    """
+    Profil charge depuis un fichier CSV.
+    """
     model_config = ConfigDict(extra="forbid")
     kind: Literal["file"]
     file: StrictStr
@@ -71,6 +109,9 @@ class FileProfileCfg(ProfileCfgBase):
 
 # ---- Horaire CGN, profils inputs
 class NavParams(BaseModel):
+    """
+    Parametres du profil de navigation (MRUA).
+    """
     model_config = ConfigDict(extra="forbid")
     # Optionnels (None par défaut), et si fournis: > 0
     acc: Annotated[float, Field(gt=0)] | None = None
@@ -80,16 +121,25 @@ class NavParams(BaseModel):
 
 # 1) modèles stricts
 class NavSelectCruise(BaseModel):
+    """
+    Selection par croisiere.
+    """
     model_config = ConfigDict(extra="forbid")
     by: Literal["cruise"]
     cruise_name: StrictStr
 
 class NavSelectCourse(BaseModel):
+    """
+    Selection par numero de course.
+    """
     model_config = ConfigDict(extra="forbid")
     by: Literal["course"]
     course_no: int
 
 class NavSelectLeg(BaseModel):
+    """
+    Selection par etape (from_port, to_port).
+    """
     model_config = ConfigDict(extra="forbid")
     by: Literal["leg"]
     leg: dict[str, StrictStr]  # {from_port,to_port}
@@ -101,6 +151,9 @@ NavSelect = Annotated[
 
 # 2) pré-normalisation dans le conteneur (ici le profil nav_speed)
 class NavSpeedProfileCfg(ProfileCfgBase):
+    """
+    Profil de vitesse construit a partir des horaires CGN.
+    """
     model_config = ConfigDict(extra="forbid")
     kind: Literal["nav_speed"]
     unit: StrictStr = "m/s"
@@ -139,6 +192,9 @@ ProfileCfg = Annotated[
 
 # adapters
 class AdapterCfg(BaseModel):
+    """
+    Configuration d'un adapter.
+    """
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     kind: StrictStr
@@ -149,6 +205,9 @@ class AdapterCfg(BaseModel):
 
 # bindings input->bus
 class InputBindCfg(BaseModel):
+    """
+    Binding input du solver vers une source de signal.
+    """
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     bus: StrictStr
@@ -180,11 +239,16 @@ class InputBindCfg(BaseModel):
 # ---- Storage / Vector specs à définir ---
 class StorageCfg(BaseModel):
     """
-    Déclare un stockage à partir d’un bus du solver.
-    - id      : identifiant du stockage (côté vessel)
-    - bus     : id du bus à intégrer (côté solver)
-    - vecteur : (optionnel) identifiant d’un vecteur énergétique (diesel, H2, battery…)
-                Non utilisé par le tally générique; réservé pour un enrichissement ultérieur.
+    Declaration d'un stockage adosse a un bus du solver.
+
+    Attributes
+    ----------
+    id : str
+        Identifiant du stockage cote vessel.
+    bus : str
+        Identifiant du bus cote solver.
+    vecteur : str | None
+        Identifiant optionnel du vecteur energetique (diesel, H2, battery, ...).
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -309,3 +373,22 @@ class VesselSectionsCfg(BaseModel):
             raise ValueError("Vessel sections invalides:\n- " + "\n- ".join(errs))
 
         return self
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

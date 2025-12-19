@@ -1,5 +1,9 @@
 # cgn_model/energy_solver/config.py
 
+"""
+Schemas Pydantic pour la configuration du solver DAG.
+"""
+
 from typing import Any
 from pydantic import BaseModel, Field, StrictStr, ConfigDict, model_validator
 from cgn_model.energy_solver.types import Mode
@@ -8,6 +12,14 @@ __all__ = ["Cfg"]
 
 # --- Solver ---
 class SolverCfg(BaseModel):
+    """
+    Configuration du solver.
+
+    Attributes
+    ----------
+    mode : {"forward","inverse"}
+        Mode de resolution du DAG.
+    """
     model_config = ConfigDict(extra="forbid")
     mode: Mode
 
@@ -19,6 +31,18 @@ _CANON_UNIT = {
 }
 
 class BusCfg(BaseModel):
+    """
+    Configuration d'un bus.
+
+    Attributes
+    ----------
+    id : str
+        Identifiant unique.
+    carrier : str
+        Porteur energetique (Electrical, Mechanical, Chemical, ...).
+    unit : str | None
+        Unite attendue, optionnelle dans le YAML.
+    """
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     carrier: StrictStr
@@ -52,12 +76,38 @@ class BusCfg(BaseModel):
 
 # --- Inputs ---
 class InputCfg(BaseModel):
+    """
+    Configuration d'un input du solver.
+
+    Attributes
+    ----------
+    id : str
+        Identifiant unique.
+    bus : str
+        Bus cible.
+    """
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     bus: StrictStr
 
 # --- Converters ---
 class ConverterCfg(BaseModel):
+    """
+    Configuration d'un convertisseur.
+
+    Attributes
+    ----------
+    id : str
+        Identifiant unique.
+    from_bus : str
+        Bus en entree.
+    to_bus : str
+        Bus en sortie.
+    kind : str
+        Type de convertisseur (registre).
+    params : dict
+        Parametres specifiques au kind.
+    """
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
     from_bus: StrictStr
@@ -68,6 +118,11 @@ class ConverterCfg(BaseModel):
 
 # --- Top-level ---
 class Cfg(BaseModel):
+    """
+    Configuration globale du solver DAG.
+
+    Regroupe solver, buses, converters et inputs.
+    """
     model_config = ConfigDict(extra="forbid")
     solver: SolverCfg
     buses: list[BusCfg]
@@ -92,3 +147,10 @@ class Cfg(BaseModel):
             raise ValueError(f"IDs dupliqués: {dup}")
 
         return self
+
+
+
+
+
+
+

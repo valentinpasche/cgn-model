@@ -1,5 +1,11 @@
 # cgn_model/energy_solver/run_dag.py
 
+"""
+Execution vectorielle du solveur DAG.
+
+Ce module prepare les inputs et propage les flux selon le mode du solver.
+"""
+
 from __future__ import annotations
 import numpy as np
 from typing import Mapping
@@ -7,10 +13,35 @@ from cgn_model.energy_solver import SolverDAG
 
 
 def _pos(x: np.ndarray) -> np.ndarray:
+    """
+    Partie positive de x (max(x, 0)).
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Tableau d'entree.
+
+    Returns
+    -------
+    numpy.ndarray
+        Tableau avec les valeurs negatives tronquees a 0.
+    """
     return np.maximum(x, 0.0)
 
 def _neg_mag(x: np.ndarray) -> np.ndarray:
-    """Magnitude des déficits: (-x)+ == max(-x,0)."""
+    """
+    Magnitude des deficits: (-x)+ == max(-x, 0).
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Tableau d'entree.
+
+    Returns
+    -------
+    numpy.ndarray
+        Magnitude des valeurs negatives.
+    """
     return np.maximum(-x, 0.0)
 
 def prepare_state(
@@ -21,19 +52,33 @@ def prepare_state(
     raise_on_extra: bool = False,  # lève si des clés de profiles ne correspondent à aucun input
 ) -> int:
     """
-    Applique les inputs et (ré)initialise les états des bus/convertisseurs.
+    Applique les inputs et reinitialise les etats du solver.
 
-    Accepte deux formats pour `profiles` :
-      - {input_id: array}
-      - {input_id: (bus_id, array)}
+    Parameters
+    ----------
+    solver : SolverDAG
+        Instance du solveur prepare.
+    profiles : Mapping[str, numpy.ndarray] | Mapping[str, tuple[str, numpy.ndarray]]
+        Profils des inputs. Deux formats acceptes :
+        - {input_id: array}
+        - {input_id: (bus_id, array)}
+    check_bus : bool, optional
+        Verifie que le bus fourni correspond a l'input.
+    raise_on_extra : bool, optional
+        Leve si des cles de profiles ne correspondent a aucun input.
 
-    Effets :
-      - Réinitialise buses.net_w et buses.ledger
-      - Réinitialise converters.p_in_w et p_out_w
-      - Affecte SignedInput.profile pour chaque input
-      - Agrège chaque profil sur le bus associé (net_w) et log dans ledger ("in:<input_id>")
-    Retourne :
-      - N (longueur temporelle commune à tous les profils)
+    Returns
+    -------
+    int
+        Longueur temporelle commune a tous les profils.
+
+    Notes
+    -----
+    Effets de bord :
+    - reinitialise buses.net_w et buses.ledger
+    - reinitialise converters.p_in_w et p_out_w
+    - attache SignedInput.profile pour chaque input
+    - agrege chaque profil sur le bus associe (ledger "in:<input_id>")
     """
     # Optionnel : détecter des profils "en trop"
     if raise_on_extra:
@@ -97,13 +142,23 @@ def prepare_state(
 def run_vector(solver: SolverDAG) -> None:
     """
     Propage les flux sur le DAG en mode vectoriel.
-    Convention: profil > 0 = injection sur un bus, < 0 = demande.
-    - mode 'inverse': on couvre d'abord les déficits en aval (on remonte la chaîne).
-    - mode 'forward': on pousse les surplus disponibles en amont vers l'aval (capé par le besoin).
-    Effets:
-      - maj solver.buses[...].net_w
-      - maj conv.p_in_w / conv.p_out_w
-      - ledger minimal sur les bus (optionnel)
+
+    Parameters
+    ----------
+    solver : SolverDAG
+        Instance du solveur preparee avec des profils.
+
+    Notes
+    -----
+    Convention : profil > 0 = injection sur un bus, < 0 = demande.
+    - mode "inverse" : couvre les deficits en aval (remonte la chaine).
+    - mode "forward" : pousse les surplus amont vers l'aval (borne par le besoin).
+
+    Effets
+    ------
+    - maj solver.buses[...].net_w
+    - maj conv.p_in_w / conv.p_out_w
+    - ledger minimal sur les bus (optionnel)
     """
     if solver.mode == "inverse":
         for (u, v), conv_id in solver.plan:
@@ -180,3 +235,9 @@ def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
         eta = np.clip(eta, 0.0, 1.0)
     
     conv.eta_profile = eta
+
+
+
+
+
+

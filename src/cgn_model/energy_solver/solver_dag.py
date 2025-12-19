@@ -8,7 +8,7 @@ RÔLE (pas d'exécution ici) :
 - Valide la config (Pydantic) et construit les objets in-memory : buses, inputs, convertisseurs.
 - Construit deux graphes NetworkX : 'exec' (exécution) et 'view' (visualisation).
 - Génère un 'plan' ordonné d'arêtes à parcourir selon le mode ('forward'/'inverse').
-- Fournit un utilitaire d’affichage du DAG.
+- Fournit un utilitaire d'affichage du DAG.
 
 API PUBLIQUE :
 - SolverDAG.from_yaml(cfg: str|dict) -> SolverDAG
@@ -21,11 +21,11 @@ PRIVÉ (helpers internes) :
 - _validate_cfg(parsed) -> Cfg      # Pydantic (types + cross-checks)
 - _build_objects(cfg_model) -> (buses, converters, inputs)
 - _build_graphs(buses, converters, inputs) -> Graphs(exec, view)
-- _build_plan(G, mode) -> Plan      # ordre d’exécution des convertisseurs
+- _build_plan(G, mode) -> Plan      # ordre d'exécution des convertisseurs
 
 CONTRATS :
 - Ce module NE fait PAS la simulation (vectoriel/stepper). Il prépare la structure.
-- _parse_cfg N’ALTÈRE PAS le YAML de départ (pas d’effet de bord).
+- _parse_cfg N'ALTÈRE PAS le YAML de départ (pas d'effet de bord).
 """
 
 from __future__ import annotations
@@ -46,6 +46,18 @@ __all__ = ["SolverDAG"]
 # --- Core data (simples conteneurs) ---
 @dataclass
 class Bus:
+    """
+    Bus de bilan energetique.
+
+    Attributes
+    ----------
+    id : str
+        Identifiant unique.
+    carrier : str
+        Porteur energetique.
+    unit : str
+        Unite canonique (W).
+    """
     id: str
     carrier: str
     unit: str = "W"
@@ -54,19 +66,37 @@ class Bus:
 
 @dataclass
 class Input:
+    """
+    Input exogene connecte a un bus.
+    """
     id: str
     bus: str
     profile: FArray | None = field(default=None, init=False)
 
 @dataclass
 class Graphs:
+    """
+    Graphes d'execution et de visualisation.
+    """
     exec: nx.DiGraph
     view: nx.DiGraph
-    def draw_dag(self): raise NotImplementedError("Use SolverDAG.draw_dag()")
+
+    def draw_dag(self):
+        """
+        Placeholder de compatibilite.
+
+        Utiliser SolverDAG.draw_dag() sur l'instance principale.
+        """
+        raise NotImplementedError("Use SolverDAG.draw_dag()")
 
 # --- Solver ---
 @dataclass
 class SolverDAG:
+    """
+    Prepare un DAG de simulation energetique.
+
+    Construit les objets (buses, inputs, convertisseurs), le graphe et le plan.
+    """
     mode: Mode
     buses: dict[str, Bus]
     converters: dict[str, ConverterABC]
@@ -109,28 +139,28 @@ class SolverDAG:
     
         Garanties & choix de design
         ---------------------------
-        - Pas d’effet de bord : l’objet `cfg` d’origine n’est pas modifié.
+        - Pas d'effet de bord : l'objet `cfg` d'origine n'est pas modifié.
         - Sections étrangères au solveur (ex. 'meta', 'project', ...) sont ignorées
-          dans la valeur de retour, mais **restent** disponibles dans l’objet d’origine
-          passé à from_yaml() (pour que l’appelant puisse les consommer ailleurs).
+          dans la valeur de retour, mais **restent** disponibles dans l'objet d'origine
+          passé à from_yaml() (pour que l'appelant puisse les consommer ailleurs).
         - 'buses' / 'inputs' / 'converters' sont normalisés en **listes de dicts**.
-          Si l’utilisateur a fourni un mapping, il est transformé en liste à 1 élément.
+          Si l'utilisateur a fourni un mapping, il est transformé en liste à 1 élément.
           Si une section est absente ou None, elle devient une liste vide.
         - Hygiène légère : strip() sur quelques champs texte pour éviter les espace/retours.
         - Converters :
-            * Fallback : si un convertisseur n’a pas 'kind' mais fournit 'eta',
+            * Fallback : si un convertisseur n'a pas 'kind' mais fournit 'eta',
               on force `kind="constant_eta"` et on migre 'eta' en 'params.eta'.
-              Un warning est émis pour informer l’utilisateur.
-            * Si 'kind' vaut 'constant_eta' ET qu’un 'eta' top-level traîne,
+              Un warning est émis pour informer l'utilisateur.
+            * Si 'kind' vaut 'constant_eta' ET qu'un 'eta' top-level traîne,
               on le migre vers 'params.eta'.
         - **Aucune** validation métier avancée ici (cohérence des références bus,
           bornes, etc.) — elles sont faites ensuite par `_validate_cfg` (Pydantic).
     
         Exceptions
         ----------
-        - ValueError : si `cfg` n’est pas un mapping YAML valide.
-        - TypeError  : si une section attendue n’est ni un mapping ni une liste de mappings.
-        - ValueError : si un convertisseur n’a ni 'kind' ni 'eta' (pas de fallback possible).
+        - ValueError : si `cfg` n'est pas un mapping YAML valide.
+        - TypeError  : si une section attendue n'est ni un mapping ni une liste de mappings.
+        - ValueError : si un convertisseur n'a ni 'kind' ni 'eta' (pas de fallback possible).
     
         Exemple
         -------
@@ -410,4 +440,11 @@ class SolverDAG:
         )
         
         return None    
+
+
+
+
+
+
+
 

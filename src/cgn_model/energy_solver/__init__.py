@@ -1,6 +1,8 @@
 # cgn_model/energy_solver/__init__.py
 
-"""Energy Solver – DAG preparation and config validation."""
+"""
+Energy Solver, DAG preparation and config validation.
+"""
 
 # Re-export the friendly public API
 from .solver_dag import SolverDAG

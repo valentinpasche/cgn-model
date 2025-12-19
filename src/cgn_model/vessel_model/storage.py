@@ -1,4 +1,9 @@
 # cgn_model/vessel_model/storage.py
+
+"""
+Post-traitement generique des bus de stockage (tally energie/puissance).
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,8 +28,8 @@ class StorageResult:
       - t_s      : temps en secondes (0..(N-1)) * dt.
 
     Remarques :
-      - Pas de clip : on n’écrase aucune information au tally.
-      - L’enrichissement “vecteur” (kg, m^3, SoC, etc.) se fera en post-traitement,
+      - Pas de clip : on n'écrase aucune information au tally.
+      - L'enrichissement “vecteur” (kg, m^3, SoC, etc.) se fera en post-traitement,
         en ajoutant des colonnes au DataFrame si un vecteur est choisi.
     """
     id: str
@@ -68,7 +73,7 @@ class StorageResult:
         vecteur: str | None = None,
     ) -> "StorageResult":
         """
-        Construit le tally à partir du signal net_w d’un bus et du pas dt.
+        Construit le tally à partir du signal net_w d'un bus et du pas dt.
         """
         if dt <= 0:
             raise ValueError("dt doit être > 0")
@@ -176,3 +181,4 @@ if __name__ == "__main__":
     
     print(f"Total J : {stor.total_J:,.0f}")
     print(f"Total kWh : {stor.total_kWh:,.3f}")
+

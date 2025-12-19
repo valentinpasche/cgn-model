@@ -4,15 +4,15 @@
 Registry des convertisseurs + contrat de base (ConverterABC).
 
 Ce module est le SEUL endroit à modifier quand vous ajoutez un nouveau
-type de convertisseur. Le reste du système (config, solver_dag) n’a pas
-besoin d’être changé.
+type de convertisseur. Le reste du système (config, solver_dag) n'a pas
+besoin d'être changé.
 
 # Rôle
 - Fournit le contrat nominal `ConverterABC` (méthodes `forward`/`inverse`).
 - Expose un **registre** de convertisseurs (clé `kind` -> (ParamsModel, builder)).
 - Valide les paramètres spécifiques via un **modèle Pydantic** par type.
 - Construit une instance concrète via `build_converter_from_cfg(c)` à partir
-  d’un élément `ConverterCfg` (id, from_bus, to_bus, kind, params).
+  d'un élément `ConverterCfg` (id, from_bus, to_bus, kind, params).
 
 # Flux de configuration (YAML)
 Un convertisseur se décrit ainsi :
@@ -25,7 +25,7 @@ Un convertisseur se décrit ainsi :
         params:
           eta: 0.45
 
-**Compat retro** : si `kind` est omis mais qu’un `eta` top-level est présent,
+**Compat retro** : si `kind` est omis mais qu'un `eta` top-level est présent,
 `solver_dag._parse_cfg` migre vers :
     kind="constant_eta", params={"eta": ...}
 et émet un `warnings.warn`.
@@ -56,7 +56,7 @@ et émet un `warnings.warn`.
     def build_my_kind(id: str, from_bus: str, to_bus: str, params: MyParams) -> ConverterABC:
         return MyConverter(id=id, from_bus=from_bus, to_bus=to_bus, alpha=params.alpha)
 
-C’est tout. Le `SolverDAG` sait déjà construire vos convertisseurs via
+C'est tout. Le `SolverDAG` sait déjà construire vos convertisseurs via
 `build_converter_from_cfg`, en fonction de `kind`.
 
 # API exposée
@@ -82,7 +82,7 @@ C’est tout. Le `SolverDAG` sait déjà construire vos convertisseurs via
     - Lève `NotImplementedError` si `kind` est inconnu (liste des kinds dispo dans le message).
 
 # Bonnes pratiques
-- Gardez vos builders **purs** (pas d’effets de bord).
+- Gardez vos builders **purs** (pas d'effets de bord).
 - Validez toute contrainte de domaine dans le `ParamsModel` (ex. bornes, tailles).
 - Pour forcer un dtype homogène, vous pouvez convertir en `np.asarray(x, dtype=np.float64)`
   dans vos implémentations.
@@ -114,8 +114,37 @@ __all__ = ["ConverterABC", "build_converter_from_cfg"]
 # ---- base ABC: Contrat nominal (impl imposée)
 class ConverterABC(ABC):
     """
-    p_in_w : retrait appliqué sur from_bus
-    p_out_w : injection effectuée sur to_bus
+    Contrat de convertisseur pour le SolverDAG.
+    Un convertisseur relie un bus from_bus a un bus to_bus et fournit
+    deux fonctions :
+    - forward(p_in_w) : convertit une puissance entrante vers la sortie
+    - inverse(p_out_w) : calcule l'entree requise pour une sortie cible
+
+    Parameters
+    ----------
+    p_in_w : FArray
+        Puissance retiree de from_bus (W).
+    p_out_w : FArray
+        Puissance injectee sur to_bus (W).
+    
+    Notes
+    -----
+    - Les unites du solver sont en W (SI) et les profils sont 1D.
+
+    Examples
+    --------
+    Convertisseur simple a rendement constant :
+    >>> from dataclasses import dataclass
+    >>> @dataclass
+    ... class MyConverter(ConverterABC):
+    ...     id: str
+    ...     from_bus: str
+    ...     to_bus: str
+    ...     eta: float
+    ...     def forward(self, p_in_w):
+    ...         return p_in_w * self.eta
+    ...     def inverse(self, p_out_w):
+    ...         return p_out_w / self.eta
     """
     id: str
     from_bus: str
@@ -134,12 +163,34 @@ class LoggedConverter:
 
 # ---- registre
 class ConverterParams(BaseModel):
+    """
+    Base Pydantic pour les parametres de convertisseurs.
+
+    Notes
+    -----
+    - extra="forbid" empeche les fautes de frappe dans le YAML.
+    """
     model_config = ConfigDict(extra="forbid")
 
 RegistryEntry = tuple[Type[ConverterParams], Callable[[str, str, str, ConverterParams], ConverterABC]]
 REGISTRY: dict[str, RegistryEntry] = {}
 
 def register(kind: str, params_model: Type[ConverterParams]):
+    """
+    Enregistre un convertisseur dans le registre global.
+
+    Parameters
+    ----------
+    kind : str
+        Identifiant du type de convertisseur (ex. "constant_eta").
+    params_model : type[ConverterParams]
+        Modele Pydantic pour valider les parametres.
+    
+    Returns
+    -------
+    callable
+        Decorateur qui enregistre un builder.
+    """
     def deco(builder: Callable[[str, str, str, ConverterParams], ConverterABC]):
         REGISTRY[kind] = (params_model, builder)
         return builder
@@ -148,7 +199,22 @@ def register(kind: str, params_model: Type[ConverterParams]):
 # ---- builder générique (utilisé par SolverDAG)
 def build_converter_from_cfg(c) -> ConverterABC:
     """
-    c: config.ConverterCfg (id, from_bus, to_bus, kind, params)
+    Construit un convertisseur a partir d'une config validee.
+
+    Parameters
+    ----------
+    c : ConverterCfg
+        Configuration (id, from_bus, to_bus, kind, params).
+    
+    Returns
+    -------
+    ConverterABC
+        Instance de convertisseur.
+    
+    Raises
+    ------
+    NotImplementedError
+        Si kind n'est pas enregistre.
     """
     try:
         ParamsModel, builder = REGISTRY[c.kind]
@@ -168,8 +234,30 @@ class ConstantEtaParams(ConverterParams):
 @dataclass
 class ConstantEtaConverter(LoggedConverter, ConverterABC):
     """
-    p_in_w : retrait appliqué sur from_bus
-    p_out_w : injection effectuée sur to_bus
+    Convertisseur a rendement constant.
+
+    Parameters
+    ----------
+    id : str
+        Identifiant du convertisseur.
+    from_bus : str
+        Bus en entree.
+    to_bus : str
+        Bus en sortie.
+    eta : float
+        Rendement constant (0 < eta <= 1).
+
+    Attributes
+    ----------
+    p_in_w : FArray | None
+        Profil d'entree (W), rempli par le solver.
+    p_out_w : FArray | None
+        Profil de sortie (W), rempli par le solver.
+
+    Notes
+    -----
+    - forward(p_in_w) = p_in_w * eta
+    - inverse(p_out_w) = p_out_w / eta
     """
     id: str
     from_bus: str
@@ -198,9 +286,34 @@ class VariableEtaParams(ConverterParams):
 @dataclass
 class VariableEtaConverter(LoggedConverter, ConverterABC):
     """
-    Rendement variable dans le temps via eta_profile (optionnel).
-    - Si eta_profile est None -> fallback sur eta_default constant.
-    - Sinon forward/inverse utilisent eta_profile[t].
+    Convertisseur a rendement variable dans le temps.
+
+    Parameters
+    ----------
+    id : str
+        Identifiant du convertisseur.
+    from_bus : str
+        Bus en entree.
+    to_bus : str
+        Bus en sortie.
+    eta : float
+        Rendement par defaut (fallback).
+    eta_source : str | None
+        ID d'un profil eta(t) (optionnel, pour autowire).
+
+    Attributes
+    ----------
+    eta_profile : FArray | None
+        Profil eta(t) attache, sinon None.
+    p_in_w : FArray | None
+        Profil d'entree (W), rempli par le solver.
+    p_out_w : FArray | None
+        Profil de sortie (W), rempli par le solver.
+
+    Notes
+    -----
+    - Si eta_profile est None -> fallback sur eta (eta_default).
+    - Sinon forward/inverse utilisent eta_profile[t] (clip a [1e-6, 1]).
     """
     id: str
     from_bus: str
@@ -238,4 +351,12 @@ def build_variable_eta(id: str, from_bus: str, to_bus: str, params: VariableEtaP
         eta=params.eta_default,
         eta_source=params.eta_source
     )
+
+
+
+
+
+
+
+
 

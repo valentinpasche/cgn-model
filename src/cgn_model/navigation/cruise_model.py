@@ -1,5 +1,9 @@
 # cgn_model/navigation/cruise_model.py
 
+"""
+Modeles navigation CGN et generation de profils de vitesse.
+"""
+
 from __future__ import annotations
 
 from importlib import resources
@@ -17,11 +21,19 @@ __all__ = ["Etape", "Course", "Croisiere", "SpeedProfileParams"]
 
 def format_profile_summary(profile: np.ndarray | None, values: bool = False) -> str:
     """
-    Représentation compacte d'un profil numpy 1D pour les __repr__.
+    Raccourci pour resumer un profil 1D numpy.
 
-    Exemple :
-      array([0.0, 0.0, 0.1, ..., 1.2, 0.8, 0.0],
-            shape=(34800,), mean=0.45, max=1.23, nonzero=32.1%)
+    Parameters
+    ----------
+    profile : numpy.ndarray | None
+        Profil 1D.
+    values : bool, optional
+        Si True, affiche quelques valeurs dans le resume.
+
+    Returns
+    -------
+    str
+        Representation compacte.
     """
     if profile is None:
         return "None"
@@ -78,6 +90,24 @@ class SpeedProfileParams:
 
 @dataclass
 class Etape:
+    """
+    Etape d'une course (trajet ou pause).
+
+    Attributes
+    ----------
+    from_port : str
+        Port de depart.
+    to_port : str
+        Port d'arrivee.
+    depart : datetime.time
+        Heure de depart.
+    km : float
+        Distance en km (0 pour une pause).
+    minutes : float
+        Duree en minutes.
+    profile : numpy.ndarray
+        Profil de vitesse calcule (optionnel).
+    """
     from_port: str
     to_port: str
     depart: dt.time  # ou pd.Timestamp (date générique, 01.01.1900)
@@ -144,20 +174,21 @@ class Etape:
         n_dt_delay: int | None = None,
     ) -> tuple[np.ndarray, int | None]:
         """
-        Retourne un profil de vitesse v(t) pour cette étape, discrétisé toutes dt secondes.
+        Construit le profil de vitesse v(t) pour l'etape.
 
-        - Unités SI : m, s, m/s.
-        - Si l'étape est une pause (km == 0) → vecteur de zéros sur toute la durée.
-        - Sinon :
-          - on construit un profil MRUA (accélération, éventuellement plateau,
-            décélération) qui parcourt la distance donnée, avec v_croisiere,
-            acc et dec ;
-          - on calcule le temps physique minimal T_phys ;
-          - si l'horaire (minutes) est plus long → on ajoute des zéros au
-            début et à la fin (accostage / embarquement) ;
-          - si l'horaire est trop court :
-              - allow_delay=False → ValueError
-              - allow_delay=True  → on utilise T_phys, et donc on arrive en retard.
+        Parameters
+        ----------
+        params : SpeedProfileParams | None
+            Parametres MRUA (dt, acc, dec, v_croisiere, allow_delay).
+        n_dt_delay : int | None
+            Retard courant en pas de temps, si applicable.
+
+        Returns
+        -------
+        numpy.ndarray
+            Profil 1D de vitesse [m/s].
+        int | None
+            Retard restant en pas de temps.
         """
         def _catch_n_delay(n_current: int, n_delay: int) -> tuple[int, int, int]:
             " Reprise du retard possible "
@@ -342,6 +373,9 @@ class Etape:
 
 @dataclass
 class Course:
+    """
+    Course composee d'une liste d'etapes.
+    """
     numero: int
     etapes: list[Etape]
     profile: np.ndarray | None = None
@@ -419,11 +453,21 @@ class Course:
             n_dt_delay: int | None = None,
     ) -> tuple[np.ndarray, int | None]:
         """
-        Construit et stocke le profil de vitesse de la course en concaténant
-        les profils de toutes ses étapes (y compris pauses internes).
-        
-        Les kwargs sont passés tels quels à Etape.speed_profile, donc les
-        valeurs par défaut ne sont définies qu'à un seul endroit.
+        Concatene les profils de toutes les etapes de la course.
+
+        Parameters
+        ----------
+        params : SpeedProfileParams | None
+            Parametres MRUA.
+        n_dt_delay : int | None
+            Retard courant en pas de temps, si applicable.
+
+        Returns
+        -------
+        numpy.ndarray
+            Profil de vitesse de la course.
+        int | None
+            Retard restant en pas de temps.
         """
         if params is None:
             params = SpeedProfileParams()
@@ -464,6 +508,9 @@ class Course:
 
 @dataclass
 class Croisiere:
+    """
+    Croisiere composee de courses et de pauses.
+    """
     nom: str
     courses: list[Course]
     pauses: list[Etape] # pauses entre les courses (km == 0 et changement de n° de course)
@@ -591,7 +638,9 @@ class Croisiere:
 
     @staticmethod
     def view_croisiere(obj: Croisiere | Iterable[Croisiere]) -> None:
-        """Visualisation d'une ou plusieurs croisières dans la console."""
+        """
+        Affiche une ou plusieurs croisieres en console.
+        """
         if isinstance(obj, Croisiere):
             croisieres = [obj]
         else:
@@ -687,17 +736,29 @@ class Croisiere:
     @classmethod
     def from_cgn_croisiere_csv(cls, name: str) -> list[Croisiere]:
         """
-        name: "translemanique", "lavaux_haut_lac", etc.
-        fichiers inclus dans le modèle sous :
-        "src/cgn_model/navigation/data/cgn_croisieres/<filename>"
+        Variante pratique depuis un CSV embarque dans le package.
+
+        Parameters
+        ----------
+        name : str
+            Nom du jeu de donnees (ex. "translemanique").
+
+        Returns
+        -------
+        list[Croisiere]
+            Liste de croisieres.
         """
         path = _cgn_croisiere_csv_path(f"{name}.csv")
         return cls.from_csv(path)
 
     def check_continuite(self) -> bool:
         """
-        Vérifie que pour tout élément consécutif du trajet,
-        le to_port du précédent == from_port du suivant.
+        Verifie la continuite des ports sur le trajet.
+
+        Returns
+        -------
+        bool
+            True si tous les segments sont continus.
         """
         t = self.trajet
         for prev, cur in zip(t, t[1:]):
@@ -710,11 +771,19 @@ class Croisiere:
             params: SpeedProfileParams | None = None,
     ) -> tuple[np.ndarray, int | None]:
         """
-        Construit et stocke le profil complet de la croisière, en concaténant :
-        - le profil de chaque Course
-        - le profil des pauses (Etape) entre courses.
+        Concatene les profils de toutes les courses et pauses.
 
-        Les kwargs sont passés tels quels à Course.speed_profile / Etape.speed_profile.
+        Parameters
+        ----------
+        params : SpeedProfileParams | None
+            Parametres MRUA.
+
+        Returns
+        -------
+        numpy.ndarray
+            Profil de vitesse de la croisiere.
+        int | None
+            Retard restant en pas de temps.
         """
         if params is None:
             params = SpeedProfileParams()
@@ -775,3 +844,25 @@ if __name__ == "__main__":
     # print("Pauses (min)     :", c.pause_minutes)
     # print("Vitesse moy (km/h):", c.avg_speed_kmh)
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

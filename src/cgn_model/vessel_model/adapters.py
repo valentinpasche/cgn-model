@@ -18,7 +18,7 @@ API publique (minimale)
 - AdapterParams            : base Pydantic pour les params
 - register(kind, Model)    : décorateur pour enregistrer un adapter
 - build_adapter_from_cfg() : construit un adapter depuis AdapterCfg
-- convert_unit()           : conversion d’unités stricte (sensible à la casse SI)
+- convert_unit()           : conversion d'unités stricte (sensible à la casse SI)
 
 Adapter fourni
 --------------
@@ -151,27 +151,34 @@ def convert_unit(
     quantity: Literal["power","speed","force"],
 ) -> tuple[FArray, str]:
     """
-    Conversion stricte et sûre (sensible à la casse SI).
-
+    Conversion stricte d'unites (sensible a la casse SI).
     Parameters
     ----------
     series : FArray
-        Signal 1D
+        Signal 1D.
     unit_in : str
-        Unité actuelle
+        Unite actuelle (ex. "kW", "m/s", "N").
     unit_out : str
-        Unité cible
-    quantity : {'power','speed','froce'}
-        Domaine physique (détermine les tables)
-
+        Unite cible.
+    quantity : {'power','speed','force'}
+        Domaine physique (determine les tables).
     Returns
     -------
-    (series_out, unit_out)
-
+    series_out : FArray
+        Signal converti.
+    unit_out : str
+        Unite finale (canonisee).
     Notes
     -----
-    - Base 'power' : W ; base 'speed' : m/s.
-    - Refuse les écritures ambiguës ('mw', 'kw' en minuscules).
+    - Base "power" : W ; base "speed" : m/s ; base "force" : N.
+    - Refuse les ecritures ambigues ('mw', 'kw' en minuscules).
+    Examples
+    --------
+    >>> import numpy as np
+    >>> v = np.array([0.0, 10.0])
+    >>> out, u = convert_unit(v, unit_in="km/h", unit_out="m/s", quantity="speed")
+    >>> u
+    'm/s'
     """
     u_in, f_in = _parse_unit(quantity, unit_in)
     u_out, f_out = _parse_unit(quantity, unit_out)
@@ -188,12 +195,32 @@ def convert_unit(
 # ---- base ABC: Contrat nominal (impl imposée)
 class AdapterABC(ABC):
     """
-    Transforme des signaux en (array, unit_out).
-    - Mono-entrée : implémente `apply`.
-    - Multi-entrées : implémente `required_sources` + `apply_multi`.
-    
-    Attention : Il faut déclarer les adapters multi-entrées et les clés que
-    params contiennent leurs sources dans le fichier `vessel_model/config.py`
+    Contrat d'adapter runtime (mono-entree ou multi-entrees).
+    Un adapter :
+    - lit une ou plusieurs sources (profiles/adapters),
+    - convertit les unites,
+    - applique une transformation,
+    - produit un signal (array, unit_out), typiquement en W.
+    Notes
+    -----
+    - Mono-entree : implementer apply.
+    - Multi-entrees : implementer required_sources + apply_multi.
+    - Declarer les kinds multi-entrees dans vessel_model/config.py
+      (liste MULTISOURCE_KINDS).
+    Examples
+    --------
+    Adapter mono-entree minimal :
+    >>> from dataclasses import dataclass
+    >>> @dataclass
+    ... class SpeedToPower(AdapterABC):
+    ...     id: str
+    ...     source: str
+    ...     unit_in: str
+    ...     unit_out: str
+    ...     def apply(self, series, unit):
+    ...         s, _ = convert_unit(series, unit_in=unit, unit_out=self.unit_in, quantity="speed")
+    ...         p = s * 10.0
+    ...         return convert_unit(p, unit_in="W", unit_out=self.unit_out, quantity="power")
     """
     id: str
     source: str         # id mono-entrée (ignoré par multi si souhaité)
@@ -223,6 +250,12 @@ class AdapterABC(ABC):
         return self.apply(series, unit)
 
 class AdapterParams(BaseModel):
+    """
+    Base Pydantic pour les parametres d'adapters.
+    Notes
+    -----
+    - extra="forbid" empeche les fautes de frappe dans le YAML.
+    """
     model_config = ConfigDict(extra="forbid")
 
 # ---- registre
@@ -231,13 +264,26 @@ REGISTRY: dict[str, RegistryEntry] = {}
 
 def register(kind: str, params_model: Type[AdapterParams]):
     """
-    Usage:
-        @register("speed_to_power_poly", SpeedToPowerPolyParams)
-        def build(...): ...
-        
+    Enregistre un adapter dans le registre global.
+    Parameters
+    ----------
+    kind : str
+        Identifiant du type d'adapter (ex. "speed_to_power_poly").
+    params_model : type[AdapterParams]
+        Modele Pydantic pour valider les parametres.
+    Notes
+    -----
     Convention de nommage :
-        kind: "<qin>_to_<qout>_<méthode>"
-        Exemples : speed_to_force_poly, force_to_power_mul, speed_to_power_poly.
+      "<qin>_to_<qout>_<methode>"
+      Exemples : "speed_to_force_poly", "force_to_power_mul".
+    Examples
+    --------
+    >>> @register("speed_to_power_poly", SpeedToPowerPolyParams)
+    ... def build(id, source, unit_in, unit_out, p):
+    ...     return SpeedToPowerPolyAdapter(
+    ...         id=id, source=source, unit_in=unit_in, unit_out=unit_out,
+    ...         coeffs=tuple(p.coeffs), clip_min=p.clip_min,
+    ...     )
     """
     def deco(builder: Callable[[str, str, str, AdapterParams], AdapterABC]):
         REGISTRY[kind] = (params_model, builder)
@@ -247,7 +293,19 @@ def register(kind: str, params_model: Type[AdapterParams]):
 # ---- builder générique (utilisé par Vessel)
 def build_adapter_from_cfg(c: AdapterCfg) -> AdapterABC:
     """
-    c: AdapterCfg (id, kind, source, unit_in, unit_out, params)
+    Construit un adapter a partir d'un AdapterCfg.
+    Parameters
+    ----------
+    c : AdapterCfg
+        Configuration validee (id, kind, source, unit_in, unit_out, params).
+    Returns
+    -------
+    AdapterABC
+        Instance d'adapter prete a etre utilisee.
+    Raises
+    ------
+    NotImplementedError
+        Si kind n'est pas enregistre.
     """
     try:
         ParamsModel, builder = REGISTRY[c.kind]
@@ -267,6 +325,25 @@ class SpeedToPowerPolyParams(AdapterParams):
 
 @dataclass
 class SpeedToPowerPolyAdapter(AdapterABC):
+    """
+    Adapter vitesse -> puissance via polynome.
+
+    Parameters
+    ----------
+    coeffs : tuple[float, ...]
+        Coefficients (a0, a1, a2, ...).
+    unit_in : str
+        Unite attendue en entree (ex. "m/s").
+    unit_out : str
+        Unite de sortie (ex. "W").
+    clip_min : float | None
+        Valeur minimale (None pour ne pas clipper).
+
+    Notes
+    -----
+    - P(v) = a0 + a1*v + a2*v^2 + ...
+    - Conversion d'unites automatique vers unit_in.
+    """
     id: str
     source: str
     unit_in: str    # ex 'm/s'
@@ -315,8 +392,27 @@ class ForceAndSpeedToPowerParams(AdapterParams):
 @dataclass
 class ForceAndSpeedToPowerAdapter(AdapterABC):
     """
-    P = F * v
-    Cet adapter ignore 'source' top-level d'AdapterCfg et utilise 2 sources dans Params.
+    Adapter multi-entrees: puissance = force * vitesse.
+
+    Parameters
+    ----------
+    force_source : str
+        ID de la source force.
+    speed_source : str
+        ID de la source vitesse.
+    force_unit_in : str
+        Unite attendue pour la force (ex. "N").
+    speed_unit_in : str
+        Unite attendue pour la vitesse (ex. "m/s").
+    unit_out : str
+        Unite de sortie (ex. "W").
+    clip_min : float | None
+        Valeur minimale (None pour ne pas clipper).
+
+    Notes
+    -----
+    - Ignore source top-level d'AdapterCfg.
+    - P = F * v (en SI, W).
     """
     id: str
     source: str
@@ -367,8 +463,23 @@ class SpeedToForcePolyParams(AdapterParams):
 @dataclass
 class SpeedToForcePoly(AdapterABC):
     """
-    F(v) = a0 + a1*v + a2*v^2 + ... 
-    Entrée: vitesse (unit_in, p.ex. 'm/s'), Sortie: force ('N').
+    Adapter vitesse -> force via polynome.
+
+    Parameters
+    ----------
+    coeffs : tuple[float, ...]
+        Coefficients (a0, a1, a2, ...).
+    unit_in : str
+        Unite attendue en entree (ex. "m/s").
+    unit_out : str
+        Unite de sortie (ex. "N").
+    clip_min : float | None
+        Valeur minimale (None pour ne pas clipper).
+
+    Notes
+    -----
+    - F(v) = a0 + a1*v + a2*v^2 + ...
+    - Conversion d'unites automatique vers unit_in.
     """
     id: str
     source: str
@@ -410,8 +521,21 @@ class SpeedToEtaPolyParams(AdapterParams):
 @dataclass
 class SpeedToEtaPoly(AdapterABC):
     """
-    eta(v) = a0 + a1*v + a2*v^2 + ... 
-    Entrée: vitesse (unit_in, p.ex. 'm/s'), Sortie: rendement ('-').
+    Adapter vitesse -> rendement via polynome.
+
+    Parameters
+    ----------
+    coeffs : tuple[float, ...]
+        Coefficients (a0, a1, a2, ...).
+    unit_in : str
+        Unite attendue en entree (ex. "m/s").
+    unit_out : str
+        Unite de sortie ("-").
+
+    Notes
+    -----
+    - eta(v) = a0 + a1*v + a2*v^2 + ...
+    - Sortie adimensionnelle pour autowire dans VariableEtaConverter.
     """
     id: str
     source: str
@@ -438,5 +562,15 @@ def _build_speed_to_eta_poly(
         id=id, source=source, unit_in=unit_in, unit_out=unit_out,
         coeffs=tuple(p.coeffs)
     )
+
+
+
+
+
+
+
+
+
+
 
 

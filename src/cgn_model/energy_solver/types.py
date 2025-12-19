@@ -1,5 +1,9 @@
 # cgn_model/energy_solver/types.py
 
+"""
+Types utilitaires pour le solver DAG.
+"""
+
 from collections.abc import Mapping
 from typing import Literal
 
@@ -19,3 +23,4 @@ type Plan = list[PlanItem]
 
 type Coord = tuple[float, float] | FArray
 type Pos = Mapping[str, Coord]
+
