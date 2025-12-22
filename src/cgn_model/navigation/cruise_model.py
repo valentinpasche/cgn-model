@@ -828,21 +828,21 @@ if __name__ == "__main__":
 
     croisieres = Croisiere.from_cgn_croisiere_csv("all")
     
-    # # ---- Test continuité + __repr__
-    # for c in croisieres:
-    #     assert c.check_continuite()
-    #     print("======"*10)
-    #     Croisiere.view_croisiere(c)
+    # ---- Test continuité + __repr__
+    for c in croisieres:
+        assert c.check_continuite()
+        print("======"*10)
+        Croisiere.view_croisiere(c)
     
-    # # ---- Test totaux croisières
+    # ---- Test totaux croisières
     c = croisieres[0]
 
-    # print(c.nom)
-    # print("Total km         :", c.total_km)
-    # print("Temps total (min):", c.total_minutes)
-    # print("Nav (min)        :", c.nav_minutes)
-    # print("Pauses (min)     :", c.pause_minutes)
-    # print("Vitesse moy (km/h):", c.avg_speed_kmh)
+    print(c.nom)
+    print("Total km         :", c.total_km)
+    print("Temps total (min):", c.total_minutes)
+    print("Nav (min)        :", c.nav_minutes)
+    print("Pauses (min)     :", c.pause_minutes)
+    print("Vitesse moy (km/h):", c.avg_speed_kmh)
     
 
 
