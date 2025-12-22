@@ -6,6 +6,7 @@ les bus d'energie et les convertisseurs du DAG.
 
 ## Vue d'ensemble du modele
 > Note: pour un exemple complet (YAML + script), voir `docs/example_v1.md`.
+
 - Le solveur (energy_solver) calcule les bilans d'energie sur un DAG de bus + convertisseurs.
 - Les profils (profiles) sont des signaux bruts (vitesse, charges, etc.).
 - Les adapters transforment ces profils (ex. vitesse -> puissance) et produisent des signaux en W.
@@ -102,6 +103,9 @@ Exemple :
 ```
 
 #### kind = nav_speed
+> Note: pour savoir ou trouver les CSV et comment choisir une croisiere/course/etape,
+> voir `docs/navigation_guide.md`.
+
 Construit un profil de vitesse a partir des horaires CGN embarques.
 Si allow_delay = false, le profil doit respecter strictement l'horaire (sinon erreur).
 
