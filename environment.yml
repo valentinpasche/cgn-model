@@ -1,8 +1,8 @@
- # environment.yml (development, editable)
+# environment.yml (standard + dev)
 name: cgnmodel
 
-  # "nodefaults" is similar to "-c conda-forge --override-channels" but for yml
 channels:
+  # "nodefaults" is similar to "-c conda-forge --override-channels" but for yml
   - conda-forge
   - nodefaults
 
@@ -36,8 +36,5 @@ dependencies:
   - spyder
   - spyder-kernels
 
-  # --- Editable install of the package from this folder ---
+  # --- Packaging ---
   - pip
-  - pip:
-    - -e . # va chercher le "pyproject.toml" à la racine
-
