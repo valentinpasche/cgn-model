@@ -1,7 +1,7 @@
 # Guide navigation (profils nav_speed)
 
-Ce document explique ou trouver les fichiers CSV de navigation et comment selectionner
-une croisiere/course/etape pour un profil `kind: nav_speed`.
+Ce document explique ou trouver les fichiers CSV de navigation et comment selectionner une croisiere/course/etape  
+pour un profil **`kind: nav_speed`**.
 
 ## Ou sont les CSV
 
