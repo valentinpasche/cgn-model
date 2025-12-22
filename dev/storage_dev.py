@@ -112,5 +112,11 @@ res = stor["fuel_tank"]
 res.summary
 t = vessel.t  # vecteur temps [s] si besoin de tracer res.energy_kWh_cum
 
-df = res.to_dataframe()
+df_res = res.to_dataframe()
 dct = res.summary_dict()
+
+df_full = vessel.results_dataframe()
+
+df_perso = vessel.results_dataframe(["time", "navops"])
+
+
