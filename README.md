@@ -37,9 +37,9 @@ python -c "import cgn_model; print('OK:', cgn_model.__name__, 'version:', getatt
 
 ## Quickstart
 
-- Guide YAML : voir [docs/yaml_guide.md ↗](docs/yaml_guide.md)
-- Exemple complet V1 : voir [docs/example_v1.md ↗](docs/example_v1.md)
-- Navigation (nav_speed) : voir [docs/navigation_guide.md ↗](docs/navigation_guide.md)
+- Guide YAML : voir [docs/yaml_guide.md](docs/yaml_guide.md)
+- Exemple complet V1 : voir [docs/example_v1.md](docs/example_v1.md)
+- Navigation (nav_speed) : voir [docs/navigation_guide.md](docs/navigation_guide.md)
 
 ## Utilisation (Spyder)
 
