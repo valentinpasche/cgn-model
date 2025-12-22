@@ -1034,9 +1034,6 @@ class Vessel:
 
         return results
 
-
-
-
     def results_dataframe(self, ids: list[str] | None = None):
         """
         Compile un DataFrame des vecteurs principaux (signaux, solver, stockages).
@@ -1260,6 +1257,8 @@ class Vessel:
         df = pd.DataFrame({c: columns[c] for c in selected})
         df.attrs["units"] = {c: units[c] for c in selected if c in units}
         return df
+
+
 # --------------------------- Demo ---------------------------
 if __name__ == "__main__":
     
