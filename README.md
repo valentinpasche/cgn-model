@@ -1,32 +1,53 @@
-# CGN - Modèle de simulation chaîne énergétique
+# CGN - Modele de simulation chaine energetique
 
----
+## Installation
 
-## 🔧 Installation
+Le projet n'est pas publie sur PyPI. Pour une installation "standard", utilisez un ZIP de release/tag,
+créez l'environnement Conda, puis installez le package localement.
 
-### Via le fichier `environment.yml` (à privilégier, essentiellement)
+### Installation standard (release ZIP)
 
-> 1. Cloner le dépôt GitHub
-> 2. En ligne de commande (conda) : se placer à la racine du repo, là où se trouve le fichier `environment.yml`
-> 3. Executer les commandes suivantes :
+1) Telecharger une release/tag (ZIP) et dezipper.
+2) Ouvrir un terminal dans le dossier du projet.
+3) Creer l'environnement, puis installer le package.
 
 ```bash
 conda env create -f environment.yml
 conda activate cgnmodel
+pip install .
+
 python -c "import cgn_model; print('OK:', cgn_model.__name__, 'version:', getattr(cgn_model, '__version__', '?'))"
 ```
 
-## ▶️ Utilisation classique, via Spyder
+### Installation developpement (meme environment.yml)
 
-Lancer l'application spyder depuis l'environnement **cgnmodel**
+Deux options equivalentes :
+- **Cloner le repo** (recommande pour contribuer)
+- **Utiliser un ZIP de release** si vous voulez modifier localement une version figée
+
+Dans les deux cas :
+
+```bash
+conda env create -f environment.yml
+conda activate cgnmodel
+pip install -e .
+
+python -c "import cgn_model; print('OK:', cgn_model.__name__, 'version:', getattr(cgn_model, '__version__', '?'))"
+```
+
+## Quickstart
+
+- Guide YAML : voir [docs/yaml_guide.md ↗]()
+- Exemple complet V1 : voir [docs/example_v1.md ↗]()
+- Navigation (nav_speed) : voir [docs/navigation_guide.md ↗]()
+
+## Utilisation (Spyder)
+
+Lancer Spyder depuis l'environnement **cgnmodel** :
 
 ```bash
 conda activate cgnmodel
 spyder
 ```
 
-Ou directement l'application de bureau : *Spyder 6 (cgnmodel)*
-
----
-
-Notes de developpement : voir dev/notes_objectifs.md.
+Notes de developpement : voir `dev/notes_objectifs.md`.
