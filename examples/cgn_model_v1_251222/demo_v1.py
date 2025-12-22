@@ -3,15 +3,8 @@
 import yaml
 
 # ---- 1) Importer la configuration YAML
-def read_yaml(file: str):
-    with open(file) as stream:
-        try:
-            cfg = yaml.safe_load(stream)
-            return cfg
-        except yaml.YAMLError as exc:
-            print(exc)
-
-cfg = read_yaml("config_v1.yaml")
+with open("config_v1.yaml", "r") as f:
+    cfg = yaml.safe_load(f)
 
 # ---- 2) Construire le Vessel
 from cgn_model.vessel_model import Vessel
@@ -29,14 +22,11 @@ vessel.tally_storages()
 
 # ---- 6) Accès aux résultats
 df = vessel.results_dataframe()
+df_meta = df.attrs["units"] # ["colonnes" : "unites"]
 
 # Pas encore dans le modele - Calcul du volume de carburant (mazout)
 pci = 35.28e9 # J/m3 (9.8 kWh/l)
 df["fuel_cum_m3"] = df["fuel_tank_e_cum_J"] / pci
-
-# Utile pour "copier-coller" les noms de colonnes
-col = list(df.columns)
-print("Colonnes disponibles :\n- " + "\n- ".join(col))
 
 # ---- 7) Affichaige des résultats
 import matplotlib.pyplot as plt
