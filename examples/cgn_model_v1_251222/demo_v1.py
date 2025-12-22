@@ -96,4 +96,4 @@ cols = [
 ]
 df_export = df[cols].copy()
 
-df_export.to_csv(csv_name, sep=";", index=False)
+# df_export.to_csv(csv_name, sep=";", index=False)
