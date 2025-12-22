@@ -11,7 +11,7 @@ les bus d'energie et les convertisseurs du DAG.
 - Les profils (profiles) sont des signaux bruts (vitesse, charges, etc.).
 - Les adapters transforment ces profils (ex. vitesse -> puissance) et produisent des signaux en W.
 - Les inputs lient un signal (profile/adapter) a un bus du solver avec une convention de signe.
-- Les convertisseurs (converters) transfèrent l'energie entre bus avec un rendement.
+- Les convertisseurs (converters) transfÃ¨rent l'energie entre bus avec un rendement.
 - Les storages (optionnel) permettent de post-traiter un bus comme un stockage (bilan energie/puissance).
 
 Flux logique :
