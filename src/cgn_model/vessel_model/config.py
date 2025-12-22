@@ -300,6 +300,15 @@ class VesselSectionsCfg(BaseModel):
         if both:
             errs.append(f"IDs utilisés à la fois comme profile et adapter (collision): {both}")
 
+        # --- Collision d'espace de noms avec storages
+        stor_set = set(stor_ids)
+        stor_prof = sorted(stor_set & prof_set)
+        stor_adap = sorted(stor_set & adap_set)
+        if stor_prof:
+            errs.append(f"IDs utilisés à la fois comme storage et profile (collision): {stor_prof}")
+        if stor_adap:
+            errs.append(f"IDs utilisés à la fois comme storage et adapter (collision): {stor_adap}")
+        
         # --- Vérif des sources d'adapters
         signal_ids = prof_set | adap_set
         for a in self.adapters:
