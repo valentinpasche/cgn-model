@@ -438,7 +438,7 @@ class Vessel:
     
     # -------- Construction principale --------
     @classmethod
-    def from_yaml(cls, cfg: str | dict[str, Any]) -> "Vessel":
+    def from_yaml(cls, cfg: str | dict[str, Any], *, check_ids: bool = True) -> "Vessel":
         """
         Construit un Vessel et le SolverDAG a partir d'un YAML.
 
@@ -446,6 +446,9 @@ class Vessel:
         ----------
         cfg : str | dict
             YAML texte ou dictionnaire deja charge.
+        check_ids : bool, optional
+            Si True, verifie l'absence de collisions d'IDs entre sections vessel et solver
+            (les IDs d'inputs sont autorises a se superposer).
 
         Returns
         -------
@@ -461,7 +464,9 @@ class Vessel:
 
         # 3) Sections 'métier' (profiles/adapters/inputs) → runtime objects
         raw = cls._extract_sections(cfg)
-        sections = VesselSectionsCfg.model_validate(raw)   # déclenche cross_checks()
+        sections = VesselSectionsCfg.model_validate(raw)   # declenche cross_checks()
+        if check_ids:
+            cls._check_id_collisions(sections=sections, solver=solver)
         dt = float(sections.simulation.dt)
         profiles    = cls._build_profiles(sections.profiles, dt)
         adapters    = cls._build_adapters(sections.adapters)
@@ -587,7 +592,43 @@ class Vessel:
             "storages":   _ensure_list(pick(source.get("storages")), "storages"),
         }
 
-    # -------- Builders runtime --------    
+    @staticmethod
+    def _check_id_collisions(sections: VesselSectionsCfg, solver: SolverDAG) -> None:
+        """
+        Verifie l'absence de collisions d'IDs entre les sections vessel et le solver.
+
+        Notes
+        -----
+        Les IDs des inputs peuvent se superposer entre vessel et solver.
+        """
+        vessel_ids = {
+            "profiles": {p.id for p in sections.profiles},
+            "adapters": {a.id for a in sections.adapters},
+            "inputs": {i.id for i in sections.inputs},
+            "storages": {s.id for s in sections.storages},
+        }
+        solver_ids = {
+            "buses": set(solver.buses.keys()),
+            "converters": set(solver.converters.keys()),
+            "inputs": set(solver.inputs.keys()),
+        }
+
+        collisions: list[str] = []
+        for v_name, v_set in vessel_ids.items():
+            for s_name, s_set in solver_ids.items():
+                if v_name == "inputs" and s_name == "inputs":
+                    continue
+                overlap = sorted(v_set & s_set)
+                if overlap:
+                    collisions.append(f"{v_name} vs {s_name}: {overlap}")
+
+        if collisions:
+            details = "; ".join(collisions)
+            raise ValueError(
+                "IDs dupliques entre sections vessel et solver: "
+                f"{details}. Les IDs d'inputs peuvent se superposer."
+            )
+# -------- Builders runtime --------    
     @staticmethod
     def _build_profiles(cfg_profiles: list[ProfileCfg], dt: float) -> dict[str, Profile]:
         profiles: dict[str, Profile] = {}
@@ -996,6 +1037,229 @@ class Vessel:
 
 
 
+    def results_dataframe(self, ids: list[str] | None = None):
+        """
+        Compile un DataFrame des vecteurs principaux (signaux, solver, stockages).
+
+        Parameters
+        ----------
+        ids : list[str] | None, optional
+            Liste d'IDs. Si None, inclut tous les vecteurs disponibles.
+            - un signal ou input: "<id>"
+            - un convertisseur: "<id>" (ajoute les colonnes in/out)
+            - un storage: "<id>" (ajoute toutes les colonnes du storage)
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame avec noms de colonnes plats (IDs uniquement) et suffixe d'unite.
+            Les unites sont disponibles dans df.attrs["units"].
+
+        Raises
+        ------
+        RuntimeError
+            Si des donnees necessaires ne sont pas disponibles.
+        KeyError
+            Si un ID est inconnu.
+        ValueError
+            Si les longueurs de vecteurs sont incoherentes.
+        """
+        import pandas as pd  # type: ignore
+
+        columns: dict[str, FArray] = {}
+        units: dict[str, str] = {}
+        order: list[str] = []
+        N: int | None = None
+
+        def _clean_unit(unit: str | None) -> str | None:
+            if unit is None:
+                return None
+            u = unit.strip()
+            if u == "" or u == "-":
+                return "unitless"
+            u = u.replace("/", "_per_")
+            u = u.replace(" ", "")
+            u = u.replace("*", "_")
+            u = u.replace("^", "")
+            u = u.replace("(", "").replace(")", "")
+            return u
+
+        def _col_name(base: str, unit: str | None) -> str:
+            u = _clean_unit(unit)
+            if u is None:
+                return base
+            return f"{base}_{u}"
+
+        def _add_col(base: str, arr: FArray, unit: str | None = None) -> str:
+            nonlocal N
+            a = np.asarray(arr)
+            if a.ndim != 1:
+                raise ValueError(f"Vecteur '{base}' n'est pas 1D.")
+            if N is None:
+                N = int(a.shape[0])
+            elif int(a.shape[0]) != N:
+                raise ValueError(f"Longueurs incoherentes pour '{base}' ({a.shape[0]} vs {N}).")
+            name = _col_name(base, unit)
+            if name not in columns:
+                columns[name] = a  # type: ignore[assignment]
+                order.append(name)
+                if unit is not None:
+                    units[name] = unit
+            return name
+
+        def _unit_from_storage_col(col: str) -> str | None:
+            if col == "t_s":
+                return "s"
+            if col.endswith("_W"):
+                return "W"
+            if col.endswith("_J"):
+                return "J"
+            return None
+
+        def _strip_storage_suffix(col: str, unit: str | None) -> str:
+            if unit == "s" and col.endswith("_s"):
+                return col[:-2]
+            if unit == "W" and col.endswith("_W"):
+                return col[:-2]
+            if unit == "J" and col.endswith("_J"):
+                return col[:-2]
+            return col
+
+        # --- time
+        t = self.t
+        if t is None:
+            if self.signals:
+                any_arr = next(iter(self.signals.values()))[0]
+                t = np.arange(len(any_arr), dtype=float) * float(self.dt)
+            else:
+                for inp in self.solver.inputs.values():
+                    if inp.profile is not None:
+                        t = np.arange(len(inp.profile), dtype=float) * float(self.dt)
+                        break
+        if t is not None:
+            _add_col("time", t, "s")
+
+        # --- signals
+        if self.signals is None:
+            raise RuntimeError("signals manquants. Construisez le Vessel via from_yaml().")
+        for sig_id, (arr, unit) in self.signals.items():
+            _add_col(sig_id, arr, unit)
+
+        # --- solver inputs
+        missing_inputs = [i.id for i in self.solver.inputs.values() if i.profile is None]
+        if missing_inputs:
+            pass
+        else:
+            for inp_id, inp in self.solver.inputs.items():
+                _add_col(inp_id, inp.profile, "W")  # type: ignore[arg-type]
+
+        # --- converters in/out
+        missing_convs = [
+            c_id for c_id, conv in self.solver.converters.items()
+            if getattr(conv, "p_in_w", None) is None or getattr(conv, "p_out_w", None) is None
+        ]
+        if missing_convs:
+            pass
+        else:
+            for conv_id, conv in self.solver.converters.items():
+                _add_col(f"{conv_id}_in", conv.p_in_w, "W")   # type: ignore[arg-type]
+                _add_col(f"{conv_id}_out", conv.p_out_w, "W") # type: ignore[arg-type]
+
+        # --- storages
+        if self.storages is not None:
+            for stor_id, res in self.storages.items():
+                df = res.to_dataframe()
+                for col in df.columns:
+                    if col == "t_s":
+                        continue
+                    unit = _unit_from_storage_col(col)
+                    base = _strip_storage_suffix(col, unit)
+                    _add_col(f"{stor_id}_{base}", df[col].to_numpy(), unit)
+
+        # Guardrails when ids=None: on veut tout, donc exiger la presence des blocs manquants
+        if ids is None:
+            if t is None:
+                raise RuntimeError("Vecteur temps indisponible. Lancez le solver ou construisez les signaux.")
+            if missing_inputs:
+                raise RuntimeError(
+                    "Profiles des inputs solver manquants. Appelez build_solver()/apply_inputs_to_solver()."
+                )
+            if missing_convs:
+                raise RuntimeError(
+                    "Resultats des convertisseurs manquants. Lancez run_vector() avant export."
+                )
+            if (self.storages_cfg and (self.storages is None or len(self.storages) == 0)):
+                raise RuntimeError(
+                    "Stockages configures mais non calcules. Appelez tally_storages() avant export."
+                )
+
+        # --- build selector map (ids -> columns)
+        selector_map: dict[str, list[str]] = {}
+
+        def _add_selector(key: str, cols: list[str]) -> None:
+            if not cols:
+                return
+            lst = selector_map.setdefault(key, [])
+            for c in cols:
+                if c not in lst:
+                    lst.append(c)
+
+        if "time" in [c.split('_')[0] for c in columns.keys()]:
+            # On mappe "time" vers la colonne time_* si presente
+            for c in order:
+                if c.startswith("time_"):
+                    _add_selector("time", [c])
+                    break
+
+        for sig_id in (self.signals or {}).keys():
+            for c in order:
+                if c.startswith(f"{sig_id}_"):
+                    _add_selector(sig_id, [c])
+                    break
+
+        for inp_id in self.solver.inputs.keys():
+            for c in order:
+                if c.startswith(f"{inp_id}_"):
+                    _add_selector(inp_id, [c])
+                    break
+
+        for conv_id in self.solver.converters.keys():
+            cols = [c for c in order if c.startswith(f"{conv_id}_in_") or c.startswith(f"{conv_id}_out_")]
+            if cols:
+                _add_selector(conv_id, cols)
+                _add_selector(f"{conv_id}_in", [c for c in cols if c.startswith(f"{conv_id}_in_")])
+                _add_selector(f"{conv_id}_out", [c for c in cols if c.startswith(f"{conv_id}_out_")])
+
+        if self.storages is not None:
+            for stor_id, res in self.storages.items():
+                cols = [c for c in order if c.startswith(f"{stor_id}_")]
+                if cols:
+                    _add_selector(stor_id, cols)
+
+        # --- selection
+        if ids is None:
+            selected = order
+        else:
+            selected = []
+            selected_set = set()
+            unknown = []
+            for key in ids:
+                cols = selector_map.get(key)
+                if cols is None and key in columns:
+                    cols = [key]
+                if not cols:
+                    unknown.append(key)
+                    continue
+                for c in order:
+                    if c in cols and c not in selected_set:
+                        selected.append(c)
+                        selected_set.add(c)
+            if unknown:
+                raise KeyError(f"IDs inconnus: {unknown}. Disponibles: {sorted(selector_map.keys())}")
+
+        df = pd.DataFrame({c: columns[c] for c in selected})
+        df.attrs["units"] = {c: units[c] for c in selected if c in units}
+        return df
 # --------------------------- Demo ---------------------------
 if __name__ == "__main__":
     
