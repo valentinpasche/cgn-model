@@ -5,6 +5,7 @@ Le YAML relie des profils (inputs), des adapters (transformations), des inputs d
 les bus d'energie et les convertisseurs du DAG.
 
 ## Vue d'ensemble du modele
+> Note: pour un exemple complet (YAML + script), voir `docs/example_v1.md`.
 - Le solveur (energy_solver) calcule les bilans d'energie sur un DAG de bus + convertisseurs.
 - Les profils (profiles) sont des signaux bruts (vitesse, charges, etc.).
 - Les adapters transforment ces profils (ex. vitesse -> puissance) et produisent des signaux en W.
