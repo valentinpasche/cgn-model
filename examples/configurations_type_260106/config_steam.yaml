@@ -1,0 +1,90 @@
+# YAML de configuration, bateau type "vapeur"
+
+vessel:
+  name: ""
+  vessel_type: "steam"
+
+simulation:
+  dt: 1.0  # [s]
+
+profiles:
+  - id: "hotel_load"
+    kind: "constant"
+    unit: "W"
+    value: 100e3
+
+  - id: "speed"
+    kind: "nav_speed"
+    unit: "m/s"
+    source: "cgn_croisieres/all"
+    select:
+      by: "cruise"                                # "cruise" | "course" | "leg"
+      cruise_name: "Lavaux - Haut-Lac"                       # si by="cruise"
+    params:
+      acc: 0.05            # [m/s²]
+      dec: 0.05            # [m/s²]
+      v_croisiere: 7     # [m/s]
+      allow_delay: true
+
+adapters:
+  - id: "shaft_power_from_speed"
+    kind: "speed_to_power_poly"
+    source: "speed"
+    unit_in: "m/s"
+    unit_out: "W"
+    params:
+      coeffs: [0.0, -209.0, 1904.4, 531.36, 93.312]  # coefficients "m/s" to  "W"
+
+solver:
+  mode: "inverse"
+
+inputs:
+  - id: "shaft_demand"
+    bus: "shaft"
+    source: "shaft_power_from_speed"
+    sign: "consume"
+
+  - id: "navops"
+    bus: "elec_hotel"
+    source: "hotel_load"
+    sign: "consume"
+
+buses:
+  - id: "shaft"
+    carrier: "Mechanical"
+
+  - id: "steam"
+    carrier: "Chemical"
+
+  - id: "elec_hotel"
+    carrier: "Electrical"
+    
+  - id: "fuel"
+    carrier: "Chemical"
+
+converters:
+  - id: "steam_machine"
+    from_bus: "steam"
+    to_bus:   "shaft"
+    kind: "constant_eta"
+    params:
+      eta: 0.75   # [-]
+      
+  - id: "chaudiere"
+    from_bus: "fuel"
+    to_bus:   "steam"
+    kind: "constant_eta"
+    params:
+      eta: 0.15   # [-]
+
+  - id: "genset"
+    from_bus: "fuel"
+    to_bus:   "elec_hotel"
+    kind: "constant_eta"
+    params:
+      eta: 0.4   # [-]
+
+storages:
+  - id: "fuel_tank"
+    bus: "fuel"
+    vecteur: "diesel"

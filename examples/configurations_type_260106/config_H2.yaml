@@ -1,0 +1,80 @@
+# YAML de configuration, bateau type "H2, pile à combustible"
+
+vessel:
+  name: ""
+  vessel_type: "undefined" # H2, pile
+
+simulation:
+  dt: 1.0  # [s]
+
+profiles:
+  - id: "hotel_load"
+    kind: "constant"
+    unit: "W"
+    value: 100e3
+
+  - id: "speed"
+    kind: "nav_speed"
+    unit: "m/s"
+    source: "cgn_croisieres/all"
+    select:
+      by: "cruise"                                # "cruise" | "course" | "leg"
+      cruise_name: "Lavaux - Haut-Lac"                       # si by="cruise"
+    params:
+      acc: 0.05            # [m/s²]
+      dec: 0.05            # [m/s²]
+      v_croisiere: 7     # [m/s]
+      allow_delay: true
+
+adapters:
+  - id: "shaft_power_from_speed"
+    kind: "speed_to_power_poly"
+    source: "speed"
+    unit_in: "m/s"
+    unit_out: "W"
+    params:
+      coeffs: [0.0, -209.0, 1904.4, 531.36, 93.312]  # coefficients "m/s" to  "W"
+
+solver:
+  mode: "inverse"
+
+inputs:
+  - id: "shaft_demand"
+    bus: "shaft"
+    source: "shaft_power_from_speed"
+    sign: "consume"
+
+  - id: "navops"
+    bus: "elec_power"
+    source: "hotel_load"
+    sign: "consume"
+
+buses:
+  - id: "shaft"
+    carrier: "Mechanical"
+
+  - id: "elec_power"
+    carrier: "Electrical"
+
+  - id: "h2"
+    carrier: "Hydrogen"
+
+converters:
+  - id: "motor"
+    from_bus: "elec_power"
+    to_bus:   "shaft"
+    kind: "constant_eta"
+    params:
+      eta: 0.9   # [-]
+
+  - id: "PC"
+    from_bus: "h2"
+    to_bus:   "elec_power"
+    kind: "constant_eta"
+    params:
+      eta: 0.5   # [-]
+
+storages:
+  - id: "h2_tank"
+    bus: "h2"
+    vecteur: "hydrogen"
