@@ -157,7 +157,15 @@ flowchart TD
 | inputs: ...                                                                      |
 +----------------------------------------------------------------------------------+
 ```
-
+### *Visuel DAG possible (via mermaid):*
+```mermaid
+flowchart LR
+  A((Fuel)) --> G[genset]
+  G --> B((Electrical))
+  B --> |motor| C((Shaft))
+  I1[(Navops)] --> B
+  I2[(Speed)] --> C
+```
 ---
 
 ## 6) Visuel 4 - Wireframe ecran "Run + Resultats"
