@@ -32,5 +32,29 @@ Ce fichier sert de guide pour travailler avec Codex (ou d'autres agents) dans ce
 
 ## Notes pour les agents
 - Ne pas modifier les données `src/cgn_model/navigation/data/...` sans demande explicite.
-- Les scripts `dev/` sont exploratoires, pas des API publiques.
+- Les scripts `dev/scripts/` sont exploratoires, pas des API publiques.
 - Priorité : stabilité du solveur et du schéma YAML.
+
+## Chantier en cours (MVP web)
+- Objectif : livrer un MVP web operationnel en 2-3 semaines, sans changer le coeur physique du solver.
+- Stack cible : Dash + SQLite (mode single-writer) + YAML.
+- Option d'evolution : PostgreSQL si besoin de multi-ecriture simultanee.
+- Perimetre MVP :
+  - CRUD composants et bateaux;
+  - builder guide (liste/formulaire) pour construire la chaine;
+  - apercu DAG auto-mis a jour;
+  - import/export YAML;
+  - execution simulation;
+  - visualisation + export CSV (XLSX option si temps).
+- Hors perimetre MVP :
+  - editeur DAG drag-and-drop complet;
+  - creation no-code de nouvelles equations physiques;
+  - gestion multi-utilisateur avancee.
+- Fichiers de reference a lire en priorite :
+  - `dev/CLIENT_MVP_PROPOSITION.md`
+  - `dev/NOTE_CADRAGE_MVP_DETAILLEE.md`
+  - `docs/yaml_guide.md`
+  - `docs/example_v1.md`
+  - `src/cgn_model/vessel_model/vessel.py`
+  - `src/cgn_model/energy_solver/solver_dag.py`
+  - `src/cgn_model/energy_solver/run_dag.py`
