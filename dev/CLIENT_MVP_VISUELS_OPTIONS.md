@@ -148,13 +148,8 @@ flowchart TD
 |                               | - elec -> shaft (motor)     |                    |
 +-------------------------------+-----------------------------+--------------------+
 | Apercu DAG (auto update)                                                        |
-|```mermaid
-| flowchart LR
-|   A((Fuel)) --> G[genset]
-|   G --> B((Electrical))
-|   B --> |motor| C((Shaft))
-|   I1[(Navops)] --> B
-|   I2[(Speed)] --> C                              |
+| [Input navops] --> [Electrical:main] --> [motor] --> [Mechanical:shaft]        |
+| [Chemical:fuel] --> [genset] --> [Electrical:main]                              |
 +----------------------------------------------------------------------------------+
 | YAML live (lecture)                                                              |
 | vessel: ...                                                                      |
