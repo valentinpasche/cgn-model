@@ -1,5 +1,7 @@
 ﻿# Proposition MVP Web - cgn-model (Document client)
 
+Annexe visuelle recommandée: `dev/CLIENT_MVP_VISUELS_OPTIONS.md`
+
 ## 1. Objectif
 Mettre à disposition une interface web opérationnelle permettant d'utiliser les fonctionnalités existantes de `cgn-model` sans IDE, via navigateur, dans une logique MVP (délai cible: 2-3 semaines).
 
