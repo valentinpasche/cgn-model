@@ -22,6 +22,10 @@ dependencies:
   # --- Graph algorithms ---
   - networkx
 
+  # --- Web MVP ---
+  - dash
+  - plotly # dépendence de dash
+
   # # --- Dev & docs (optional but recommended) ---
   - pytest
   - ruff
