@@ -44,5 +44,23 @@ for c in croisieres:
     print()  # ligne vide pour la lisibilité
 
 
-    
-        
+
+# ---- Course + Etape - Extraction et calcul profile vitesse
+
+   
+from cgn_model.navigation import Course, Etape
+
+fport, tport = "Lausanne", "Vevey Marche"
+num = 982
+croisiere_translem = Croisiere.from_cgn_croisiere_csv("translemanique")[0]
+for c in getattr(croisiere_translem, "courses", []):
+    for e in getattr(c, "etapes", []):
+        if getattr(e, "from_port", None) == fport and getattr(e, "to_port", None) == tport:
+            etape_laus_vevey = e
+
+
+num = 904
+croisiere_lav_h_p_lac = Croisiere.from_cgn_croisiere_csv("lavaux_haut_lac_grand_lac")[0]
+for c in getattr(croisiere_lav_h_p_lac, "courses", []):
+    if getattr(c, "numero", None) == num:
+        course_904 = c
