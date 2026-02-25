@@ -25,14 +25,31 @@ def _sim_options() -> list[dict[str, str | int]]:
 def _build_plot(df: pd.DataFrame):
     time_col = "time_s" if "time_s" in df.columns else None
     numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    series_name = "serie"
     if time_col and len(numeric_cols) > 1:
         y_col = next((c for c in numeric_cols if c != time_col), numeric_cols[0])
+        series_name = y_col
         fig = px.line(df, x=time_col, y=y_col, title=f"{y_col} en fonction du temps")
     elif numeric_cols:
-        fig = px.line(df, y=numeric_cols[0], title=numeric_cols[0])
+        series_name = numeric_cols[0]
+        fig = px.line(df, y=series_name, title=series_name)
     else:
         fig = px.scatter(title="Aucune serie numerique exploitable")
-    fig.update_layout(autosize=True, margin={"l": 40, "r": 20, "t": 50, "b": 40})
+        series_name = "Aucune serie"
+    fig.update_traces(showlegend=True, name=series_name)
+    fig.update_layout(
+        autosize=True,
+        margin={"l": 40, "r": 20, "t": 50, "b": 40},
+        showlegend=True,
+        legend_title_text="Courbes",
+        legend={
+            "orientation": "v",
+            "x": 1.02,
+            "xanchor": "left",
+            "y": 1.0,
+            "yanchor": "top",
+        },
+    )
     return fig
 
 
@@ -170,9 +187,28 @@ def run_simulation(_: int, yaml_text: str, selected_id: int | None):
         return "Selectionne une configuration avant de lancer.", empty_fig, [], []
 
     try:
+        cfg_name = "inconnue"
+        vessel_name = "inconnu"
+        row = get_vessel_config(int(selected_id))
+        if row is not None:
+            cfg_name = row.name
+        try:
+            parsed_yaml = yaml.safe_load(yaml_text) or {}
+            vessel_name = str((parsed_yaml.get("vessel") or {}).get("name") or "inconnu")
+        except Exception:  # noqa: BLE001
+            pass
+
         out = run_simulation_from_yaml(yaml_text)
         df = out.dataframe.copy()
         fig = _build_plot(df)
+        fig.update_layout(
+            title={
+                "text": (
+                    f"Simulation energetique - Configuration : {cfg_name}"
+                    f"<br><sup>Vessel: {vessel_name}</sup>"
+                )
+            }
+        )
         data = df.head(200).to_dict("records")
         cols = [{"name": c, "id": c} for c in df.columns]
         status = f"Simulation OK: {out.n_rows} lignes, {len(out.columns)} colonnes."
