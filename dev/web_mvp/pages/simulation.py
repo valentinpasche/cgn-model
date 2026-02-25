@@ -27,10 +27,13 @@ def _build_plot(df: pd.DataFrame):
     numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
     if time_col and len(numeric_cols) > 1:
         y_col = next((c for c in numeric_cols if c != time_col), numeric_cols[0])
-        return px.line(df, x=time_col, y=y_col, title=f"{y_col} en fonction du temps")
-    if numeric_cols:
-        return px.line(df, y=numeric_cols[0], title=numeric_cols[0])
-    return px.scatter(title="Aucune serie numerique exploitable")
+        fig = px.line(df, x=time_col, y=y_col, title=f"{y_col} en fonction du temps")
+    elif numeric_cols:
+        fig = px.line(df, y=numeric_cols[0], title=numeric_cols[0])
+    else:
+        fig = px.scatter(title="Aucune serie numerique exploitable")
+    fig.update_layout(autosize=True, margin={"l": 40, "r": 20, "t": 50, "b": 40})
+    return fig
 
 
 layout = html.Div(
@@ -62,7 +65,29 @@ layout = html.Div(
         html.Br(),
         html.Button("Lancer simulation", id="btn-run-sim", n_clicks=0),
         html.Div(id="sim-status", style={"marginTop": "10px"}),
-        dcc.Graph(id="sim-graph"),
+        html.Div(
+            [
+                dcc.Graph(
+                    id="sim-graph",
+                    responsive=True,
+                    style={"width": "100%", "height": "100%"},
+                    config={"responsive": True},
+                )
+            ],
+            style={
+                "resize": "both",
+                "overflow": "auto",
+                "width": "100%",
+                "minWidth": "420px",
+                "height": "420px",
+                "minHeight": "260px",
+                "maxHeight": "80vh",
+                "border": "1px solid #d1d5db",
+                "borderRadius": "8px",
+                "padding": "6px",
+                "background": "#fff",
+            },
+        ),
         html.H4("Apercu tabulaire"),
         dash_table.DataTable(
             id="sim-table",
