@@ -9,6 +9,7 @@ import yaml
 from dash import Input, Output, State, callback, dash_table, dcc, html, register_page
 from dash_extensions import Mermaid
 import plotly.express as px
+import plotly.graph_objects as go
 
 from services.dag_mermaid import yaml_to_mermaid
 from services.db import get_vessel_config, list_vessel_configs
@@ -22,21 +23,93 @@ def _sim_options() -> list[dict[str, str | int]]:
     return [{"label": r.name, "value": r.id} for r in rows]
 
 
-def _build_plot(df: pd.DataFrame):
+def _build_profiles_plot(df: pd.DataFrame, profile_cols: list[str]):
     time_col = "time_s" if "time_s" in df.columns else None
     numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    series_name = "serie"
-    if time_col and len(numeric_cols) > 1:
-        y_col = next((c for c in numeric_cols if c != time_col), numeric_cols[0])
-        series_name = y_col
-        fig = px.line(df, x=time_col, y=y_col, title=f"{y_col} en fonction du temps")
-    elif numeric_cols:
-        series_name = numeric_cols[0]
-        fig = px.line(df, y=series_name, title=series_name)
+    y_cols = [c for c in profile_cols if c in numeric_cols]
+
+    if not y_cols:
+        if time_col and len(numeric_cols) > 1:
+            fallback = [next((c for c in numeric_cols if c != time_col), numeric_cols[0])]
+        elif numeric_cols:
+            fallback = [numeric_cols[0]]
+        else:
+            fig = px.scatter(title="Aucune serie numerique exploitable")
+            fig.update_layout(autosize=True, margin={"l": 40, "r": 20, "t": 50, "b": 40})
+            return fig
+        y_cols = fallback
+
+    fig = go.Figure()
+    if time_col:
+        x_values = df[time_col]
+        x_title = time_col
     else:
-        fig = px.scatter(title="Aucune serie numerique exploitable")
-        series_name = "Aucune serie"
-    fig.update_traces(showlegend=True, name=series_name)
+        x_values = df.index
+        x_title = "index"
+
+    colors = px.colors.qualitative.Plotly
+    n = len(y_cols)
+    left_count = (n + 1) // 2
+    right_count = n // 2
+
+    left_band = min(max(0.10, 0.05 * left_count), 0.30)
+    right_band = min(max(0.10, 0.05 * right_count), 0.30)
+    x_domain = [left_band, 1.0 - right_band]
+
+    def _positions(count: int, start: float, end: float) -> list[float]:
+        if count <= 0:
+            return []
+        if count == 1:
+            return [(start + end) / 2]
+        step = (end - start) / (count - 1)
+        return [start + i * step for i in range(count)]
+
+    left_positions = _positions(left_count, 0.02, max(0.02, left_band - 0.02))
+    right_positions = _positions(right_count, min(0.98, 1.0 - right_band + 0.02), 0.98)
+    left_idx = 0
+    right_idx = 0
+
+    for i, col in enumerate(y_cols):
+        color = colors[i % len(colors)]
+        axis_ref = "y" if i == 0 else f"y{i+1}"
+        fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=df[col],
+                mode="lines",
+                name=col,
+                showlegend=True,
+                yaxis=axis_ref,
+                line={"color": color},
+            )
+        )
+
+        axis_key = "yaxis" if i == 0 else f"yaxis{i+1}"
+        side = "left" if i % 2 == 0 else "right"
+        if side == "left":
+            position = left_positions[left_idx]
+            left_idx += 1
+        else:
+            position = right_positions[right_idx]
+            right_idx += 1
+
+        axis_cfg = {
+            "title": {"text": col, "font": {"color": color}},
+            "tickfont": {"color": color},
+            "side": side,
+            "showgrid": i == 0,
+            "zeroline": False,
+        }
+
+        if i == 0:
+            axis_cfg["anchor"] = "x"
+        else:
+            axis_cfg["overlaying"] = "y"
+            axis_cfg["anchor"] = "free"
+            axis_cfg["position"] = position
+
+        fig.update_layout(**{axis_key: axis_cfg})
+
     fig.update_layout(
         autosize=True,
         margin={"l": 40, "r": 20, "t": 50, "b": 40},
@@ -49,8 +122,33 @@ def _build_plot(df: pd.DataFrame):
             "y": 1.0,
             "yanchor": "top",
         },
+        xaxis_title=x_title,
+        xaxis={"domain": x_domain},
     )
     return fig
+
+
+def _profile_columns_from_yaml(df: pd.DataFrame, yaml_text: str) -> list[str]:
+    """
+    Retourne les colonnes du DataFrame correspondant aux profils YAML.
+    """
+    try:
+        cfg = yaml.safe_load(yaml_text) or {}
+    except Exception:  # noqa: BLE001
+        return []
+
+    profiles = cfg.get("profiles", []) or []
+    profile_ids = [str(p.get("id", "")).strip() for p in profiles if isinstance(p, dict)]
+    profile_ids = [pid for pid in profile_ids if pid]
+
+    cols: list[str] = []
+    for pid in profile_ids:
+        prefix = f"{pid}_"
+        matched = [c for c in df.columns if c.startswith(prefix)]
+        for col in matched:
+            if col not in cols:
+                cols.append(col)
+    return cols
 
 
 layout = html.Div(
@@ -200,7 +298,8 @@ def run_simulation(_: int, yaml_text: str, selected_id: int | None):
 
         out = run_simulation_from_yaml(yaml_text)
         df = out.dataframe.copy()
-        fig = _build_plot(df)
+        profile_cols = _profile_columns_from_yaml(df, yaml_text)
+        fig = _build_profiles_plot(df, profile_cols)
         fig.update_layout(
             title={
                 "text": (
@@ -211,7 +310,10 @@ def run_simulation(_: int, yaml_text: str, selected_id: int | None):
         )
         data = df.head(200).to_dict("records")
         cols = [{"name": c, "id": c} for c in df.columns]
-        status = f"Simulation OK: {out.n_rows} lignes, {len(out.columns)} colonnes."
+        status = (
+            f"Simulation OK: {out.n_rows} lignes, {len(out.columns)} colonnes, "
+            f"{len(profile_cols)} profil(s) affiche(s)."
+        )
         return status, fig, data, cols
     except Exception as exc:  # noqa: BLE001
         empty_fig = px.scatter(title="Simulation en echec")
