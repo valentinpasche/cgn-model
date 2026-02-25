@@ -28,6 +28,12 @@ def _db_path() -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir / "mvp.db"
 
+def _template_db_path() -> Path:
+    root = Path(__file__).resolve().parents[1]
+    data_dir = root / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / "mvp_template.db"
+
 
 def connect_db() -> sqlite3.Connection:
     """
@@ -37,12 +43,17 @@ def connect_db() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     return conn
 
+def connect_template_db() -> sqlite3.Connection:
+    """
+    Ouvre une connexion vers la base template.
+    """
+    conn = sqlite3.connect(_template_db_path())
+    conn.row_factory = sqlite3.Row
+    return conn
 
-def init_db() -> None:
-    """
-    Initialise le schema de base.
-    """
-    sql = """
+
+def _schema_sql() -> str:
+    return """
     CREATE TABLE IF NOT EXISTS vessel_configs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
@@ -51,7 +62,17 @@ def init_db() -> None:
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     """
+
+
+def init_db() -> None:
+    """
+    Initialise le schema de base.
+    """
+    sql = _schema_sql()
     with connect_db() as conn:
+        conn.execute(sql)
+        conn.commit()
+    with connect_template_db() as conn:
         conn.execute(sql)
         conn.commit()
 
