@@ -143,3 +143,30 @@ def get_vessel_config(config_id: int) -> VesselConfigRow | None:
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def get_vessel_config_by_name(name: str) -> VesselConfigRow | None:
+    """
+    Retourne une configuration par nom (exact, insensible aux espaces de bord).
+    """
+    normalized = name.strip()
+    if not normalized:
+        return None
+    with connect_db() as conn:
+        row = conn.execute(
+            """
+            SELECT id, name, yaml_text, created_at, updated_at
+            FROM vessel_configs
+            WHERE name = ?
+            """,
+            (normalized,),
+        ).fetchone()
+    if row is None:
+        return None
+    return VesselConfigRow(
+        id=int(row["id"]),
+        name=str(row["name"]),
+        yaml_text=str(row["yaml_text"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
