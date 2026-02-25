@@ -25,6 +25,7 @@ dependencies:
   # --- Web MVP ---
   - dash
   - plotly # dépendence de dash
+  - dash-extensions
 
   # # --- Dev & docs (optional but recommended) ---
   - pytest
