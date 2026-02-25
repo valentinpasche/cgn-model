@@ -37,6 +37,8 @@ layout = html.Div(
     [
         html.H3("Simulation"),
         dcc.Interval(id="sim-onload-refresh", interval=200, n_intervals=0, max_intervals=1),
+        dcc.Store(id="sim-yaml-store", data=""),
+        dcc.Store(id="sim-mermaid-store", data="flowchart LR\n  a[no_data]"),
         html.Div(
             [
                 html.Label("Configuration a simuler"),
@@ -56,27 +58,7 @@ layout = html.Div(
         ),
         html.Br(),
         html.Label("YAML / Mermaid (lecture seule)"),
-        html.Div(
-            id="sim-yaml-container",
-            children=[
-                dcc.Textarea(
-                    id="sim-yaml",
-                    value="",
-                    readOnly=True,
-                    style={"width": "100%", "height": "280px", "fontFamily": "Consolas, monospace"},
-                )
-            ],
-        ),
-        html.Div(
-            id="sim-mermaid-container",
-            style={"display": "none"},
-            children=[
-                Mermaid(
-                    id="sim-mermaid-chart",
-                    chart="flowchart LR\n  a[no_data]",
-                ),
-            ],
-        ),
+        html.Div(id="sim-config-view"),
         html.Br(),
         html.Button("Lancer simulation", id="btn-run-sim", n_clicks=0),
         html.Div(id="sim-status", style={"marginTop": "10px"}),
@@ -88,6 +70,7 @@ layout = html.Div(
             style_table={"overflowX": "auto"},
             style_cell={"fontFamily": "Consolas, monospace", "fontSize": 12, "textAlign": "left"},
         ),
+        html.Div(style={"height": "120px"}),
     ]
 )
 
@@ -106,8 +89,8 @@ def refresh_configs(_: int):
 
 
 @callback(
-    Output("sim-yaml", "value"),
-    Output("sim-mermaid-chart", "chart"),
+    Output("sim-yaml-store", "data"),
+    Output("sim-mermaid-store", "data"),
     Output("sim-status", "children", allow_duplicate=True),
     Input("sim-select", "value"),
     prevent_initial_call=True,
@@ -130,14 +113,20 @@ def load_selected_yaml(selected_id: int | None):
 
 
 @callback(
-    Output("sim-yaml-container", "style"),
-    Output("sim-mermaid-container", "style"),
+    Output("sim-config-view", "children"),
     Input("sim-view-mode", "value"),
+    Input("sim-yaml-store", "data"),
+    Input("sim-mermaid-store", "data"),
 )
-def toggle_yaml_view(mode: str):
+def toggle_yaml_view(mode: str, yaml_text: str, mermaid_chart: str):
     if mode == "mermaid":
-        return {"display": "none"}, {"display": "block"}
-    return {"display": "block"}, {"display": "none"}
+        return Mermaid(id="sim-mermaid-chart", chart=mermaid_chart or "flowchart LR\n  a[no_data]")
+    return dcc.Textarea(
+        id="sim-yaml",
+        value=yaml_text or "",
+        readOnly=True,
+        style={"width": "100%", "height": "280px", "fontFamily": "Consolas, monospace"},
+    )
 
 
 @callback(
@@ -146,7 +135,7 @@ def toggle_yaml_view(mode: str):
     Output("sim-table", "data"),
     Output("sim-table", "columns"),
     Input("btn-run-sim", "n_clicks"),
-    State("sim-yaml", "value"),
+    State("sim-yaml-store", "data"),
     State("sim-select", "value"),
     prevent_initial_call=True,
 )
