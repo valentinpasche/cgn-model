@@ -359,6 +359,3 @@ storages:
     bus: "Chemical:fuel"
     vecteur: "diesel"
 ```
-
-## En cours / a valider
-- Tester l'hybridation. Cela passera par un management explicite de la puissance.
