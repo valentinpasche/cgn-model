@@ -136,8 +136,6 @@ def build_layout():
                         html.Div(
                             [
                                 html.Div(id="v2cfg-status", style={"marginBottom": "8px"}),
-                                Mermaid(id="v2cfg-mermaid", chart="flowchart LR\n  n0[Configuration vide]"),
-                                html.Div(style={"height": "8px"}),
                                 dash_table.DataTable(
                                     id="v2cfg-table",
                                     columns=[
@@ -154,6 +152,34 @@ def build_layout():
                         ),
                     ],
                     style={"display": "flex", "gap": "2%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "marginBottom": "10px"},
+                ),
+                html.H3("Visualisation de la configuration", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
+                html.Div(
+                    [
+                        html.Div(
+                            dcc.RadioItems(
+                                id="v2cfg-view-mode",
+                                options=[
+                                    {"label": "Vue simple", "value": "simple", "disabled": True},
+                                    {"label": "Vue detaillee", "value": "detailed", "disabled": True},
+                                ],
+                                value="simple",
+                                inline=True,
+                                inputStyle={"marginRight": "6px", "marginLeft": "10px"},
+                            ),
+                            style={"marginBottom": "8px"},
+                        ),
+                        html.Div(
+                            [
+                                Mermaid(
+                                    id="v2cfg-mermaid",
+                                    chart='flowchart LR\n  n0["Visualisation DAG en cours de finalisation"]\n  n1["Placeholder"]\n  n0 --> n1',
+                                )
+                            ],
+                            style={"minHeight": "360px"},
+                        ),
+                    ],
+                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "marginBottom": "10px"},
                 ),
                 html.H3("Gestion des composants uniquement (local + DB)", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                 html.Div(

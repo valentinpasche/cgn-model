@@ -16,7 +16,6 @@ from components_registry import (
     default_model_key,
     local_rows,
     local_config_rows,
-    mermaid_from_config,
     model_options,
     payload_from_data,
     render_form,
@@ -79,7 +78,13 @@ def register_callbacks(app):
         rem_opts = [{"label": str(c.get("name", "")), "value": str(c.get("name", ""))} for c in comps if isinstance(c, dict) and str(c.get("name", "")).strip()]
         cfg_rows = local_config_rows(list(local_cfgs or [])) + db_config_rows()
         cfg_opts = [{"label": f'{r.get("name", "")} [{r.get("status", "")}]', "value": f'{r.get("_scope","")}|{r.get("name","")}' } for r in cfg_rows]
-        return add_opts, rem_opts, cfg_opts, cfg_rows, mermaid_from_config(current)
+        return (
+            add_opts,
+            rem_opts,
+            cfg_opts,
+            cfg_rows,
+            'flowchart LR\n  n0["Visualisation DAG en cours de finalisation"]\n  n1["Placeholder"]\n  n0 --> n1',
+        )
 
     @app.callback(
         Output("v2cfg-current", "data"),

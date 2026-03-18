@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from dash import html
@@ -252,41 +253,160 @@ def db_rows() -> list[dict[str, Any]]:
 def mermaid_from_config(config: dict[str, Any] | None) -> str:
     cfg = config if isinstance(config, dict) else {}
     comps = cfg.get("components", [])
-    lines = ["flowchart LR"]
-    names = {str(c.get("name", "")) for c in comps if isinstance(c, dict)}
-    if not names:
+    if not isinstance(comps, list):
         return "flowchart LR\n  n0[Configuration vide]"
 
-    for c in comps:
-        if not isinstance(c, dict):
-            continue
-        n = str(c.get("name", "")).strip()
-        if not n:
-            continue
-        ctype = str(c.get("component_type", ""))
-        if ctype == "converter":
-            lines.append(f'  {n}["{n}"]')
-        elif ctype == "adapter":
-            lines.append(f"  {n}{{{{{n}}}}}")
-        elif ctype == "storage":
-            lines.append(f"  {n}((({n})))")
-        else:
-            lines.append(f"  {n}[{n}]")
+    allowed_types = {"profile", "adapter", "converter", "storage"}
+    nodes_by_name: dict[str, str] = {}
+    lines: list[str] = ["flowchart LR"]
 
+    def sanitize(raw: str) -> str:
+        cleaned = re.sub(r"[^0-9a-zA-Z_]", "_", raw)
+        cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+        return cleaned or "node"
+
+    def ensure_node(name: str) -> str:
+        if name in nodes_by_name:
+            return nodes_by_name[name]
+        base = sanitize(name)
+        node_id = f"n_{base}"
+        idx = 1
+        while node_id in nodes_by_name.values():
+            idx += 1
+            node_id = f"n_{base}_{idx}"
+        nodes_by_name[name] = node_id
+        return node_id
+
+    def render_node(node_id: str, label: str, ctype: str) -> str:
+        if ctype == "profile":
+            return f'  {node_id}[("{label}")]'
+        if ctype == "adapter":
+            return f'  {node_id}{{{{"{label}"}}}}'
+        if ctype == "converter":
+            return f'  {node_id}["{label}"]'
+        if ctype == "storage":
+            return f'  {node_id}((("{label}")))'
+        return f'  {node_id}["{label}"]'
+
+    rows: list[dict[str, Any]] = []
     for c in comps:
         if not isinstance(c, dict):
             continue
-        dst = str(c.get("name", "")).strip()
-        data = c.get("data", {})
-        if not dst or not isinstance(data, dict):
+        name = str(c.get("name", "")).strip()
+        ctype = str(c.get("component_type", "")).strip()
+        if not name or ctype not in allowed_types:
             continue
-        for src_key in ("source", "force_source", "speed_source", "eta_source", "from_bus"):
-            src = str(data.get(src_key, "")).strip()
-            if src and src in names:
-                lines.append(f"  {src} --> {dst}")
-        to_bus = str(data.get("to_bus", "")).strip()
-        if to_bus and to_bus in names:
-            lines.append(f"  {dst} --> {to_bus}")
+        data = c.get("data", {})
+        rows.append({"name": name, "ctype": ctype, "data": data if isinstance(data, dict) else {}})
+        ensure_node(name)
+
+    if not rows:
+        return "flowchart LR\n  n0[Configuration vide]"
+
+    # Noeuds
+    for r in rows:
+        lines.append(render_node(nodes_by_name[r["name"]], r["name"], r["ctype"]))
+
+    # Liens explicites entre composants (inputs et bus masques).
+    edge_lines: list[tuple[str, str]] = []
+    seen_edges: set[tuple[str, str, str]] = set()
+    valid_names = set(nodes_by_name.keys())
+
+    def add_edge(src_name: str, dst_name: str, edge_kind: str) -> None:
+        if src_name not in valid_names or dst_name not in valid_names:
+            return
+        if src_name == dst_name:
+            return
+        key = (src_name, dst_name, edge_kind)
+        if key in seen_edges:
+            return
+        seen_edges.add(key)
+        edge_lines.append((f"  {nodes_by_name[src_name]} --> {nodes_by_name[dst_name]}", edge_kind))
+
+    # 1) Liens de contexte
+    for r in rows:
+        dst = r["name"]
+        ctype = r["ctype"]
+        data = r["data"]
+        if ctype == "adapter":
+            for k in ("source", "force_source", "speed_source"):
+                src = str(data.get(k, "")).strip()
+                if src:
+                    add_edge(src, dst, "context")
+        if ctype == "converter":
+            eta_src = str((data.get("params", {}) or {}).get("eta_source", "")).strip()
+            if eta_src:
+                add_edge(eta_src, dst, "context")
+
+    # 2) Liens energetiques via bus implicites (bus non affiches)
+    producers_by_bus: dict[str, list[str]] = {}
+    consumers_by_bus: dict[str, list[str]] = {}
+    storages_by_bus: dict[str, list[str]] = {}
+
+    for r in rows:
+        name = r["name"]
+        ctype = r["ctype"]
+        data = r["data"]
+        if ctype == "converter":
+            from_bus = str(data.get("from_bus", "")).strip()
+            to_bus = str(data.get("to_bus", "")).strip()
+            if from_bus:
+                consumers_by_bus.setdefault(from_bus, []).append(name)
+            if to_bus:
+                producers_by_bus.setdefault(to_bus, []).append(name)
+        elif ctype == "storage":
+            bus = str(data.get("bus", "")).strip()
+            if bus:
+                storages_by_bus.setdefault(bus, []).append(name)
+
+    all_buses = set(producers_by_bus.keys()) | set(consumers_by_bus.keys()) | set(storages_by_bus.keys())
+    for bus in all_buses:
+        producers = producers_by_bus.get(bus, [])
+        consumers = consumers_by_bus.get(bus, [])
+        storages = storages_by_bus.get(bus, [])
+
+        for p in producers:
+            for c in consumers:
+                add_edge(p, c, "energy")
+        for s in storages:
+            for c in consumers:
+                add_edge(s, c, "context")
+
+    lines.append("")
+    energy_link_indexes: list[int] = []
+    context_link_indexes: list[int] = []
+    for idx, (edge_line, edge_kind) in enumerate(edge_lines):
+        lines.append(edge_line)
+        if edge_kind == "energy":
+            energy_link_indexes.append(idx)
+        else:
+            context_link_indexes.append(idx)
+
+    lines.append("")
+    lines.append("  classDef energyConv fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100;")
+    lines.append("  classDef context fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,color:#424242;")
+    lines.append("  classDef storage fill:#e8f5e9,stroke:#2e7d32,stroke-width:1.6px,color:#1b5e20;")
+    lines.append("  classDef profile fill:#ede7f6,stroke:#5e35b1,stroke-width:1.4px,color:#311b92;")
+
+    conv_nodes = [nodes_by_name[r["name"]] for r in rows if r["ctype"] == "converter"]
+    context_nodes = [nodes_by_name[r["name"]] for r in rows if r["ctype"] == "adapter"]
+    storage_nodes = [nodes_by_name[r["name"]] for r in rows if r["ctype"] == "storage"]
+    profile_nodes = [nodes_by_name[r["name"]] for r in rows if r["ctype"] == "profile"]
+
+    if conv_nodes:
+        lines.append(f"  class {','.join(conv_nodes)} energyConv;")
+    if context_nodes:
+        lines.append(f"  class {','.join(context_nodes)} context;")
+    if storage_nodes:
+        lines.append(f"  class {','.join(storage_nodes)} storage;")
+    if profile_nodes:
+        lines.append(f"  class {','.join(profile_nodes)} profile;")
+
+    for idx in context_link_indexes:
+        lines.append(f"  linkStyle {idx} stroke:#9e9e9e,stroke-width:1.2px,stroke-dasharray:4 3;")
+    for idx in energy_link_indexes:
+        lines.append(f"  linkStyle {idx} stroke:#1565c0,stroke-width:2.4px;")
+
     return "\n".join(lines)
 
 
