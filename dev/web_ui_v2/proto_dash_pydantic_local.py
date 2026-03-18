@@ -16,9 +16,9 @@ from dash import Dash, Input, Output, State, callback, dash_table, dcc, html, no
 import dash_mantine_components as dmc
 from pydantic import BaseModel, ValidationError
 
-from dash_pydantic_form import ModelForm
+from dash_pydantic_form import ModelForm, fields
 
-from idees_basemodel import (
+from components_basemodel import (
     ConstantEtaConverter,
     ForceAndSpeedToPowerAdapter,
     SpeedToForcePoly,
@@ -91,79 +91,31 @@ def _default_model_key(component_type: str) -> str | None:
     return str(opts[0]["value"])
 
 
-def _to_component_payload(model_key: str, form_data: dict[str, Any]) -> dict[str, Any]:
-    spec = MODEL_SPECS[model_key]
-    kind = str(spec["kind"])
-    ctype = str(spec["component_type"])
-    model_cls = spec["model"]
+def _to_validated_form_dict(model_key: str, form_data: dict[str, Any]) -> dict[str, Any]:
+    model_cls = MODEL_SPECS[model_key]["model"]
     obj = model_cls.model_validate(form_data)
-    data = obj.model_dump()
+    return obj.model_dump(exclude_none=True)
 
-    if model_key == "converter.constant_eta":
-        component = {
-            "id": data["id"],
-            "kind": "constant_eta",
-            "from_bus": data.get("from_bus"),
-            "to_bus": data.get("to_bus"),
-            "params": {"eta": data["eta"]},
-        }
-    elif model_key == "converter.variable_eta":
-        component = {
-            "id": data["id"],
-            "kind": "variable_eta",
-            "from_bus": data.get("from_bus"),
-            "to_bus": data.get("to_bus"),
-            "params": {
-                "eta_default": 1.0,
-                "eta_source": data["eta_source"],
-            },
-        }
-    elif model_key == "adapter.speed_to_power_poly":
-        component = {
-            "id": data["id"],
-            "kind": "speed_to_power_poly",
-            "source": data["source"],
-            "unit_in": data.get("unit_in", "m/s"),
-            "unit_out": data.get("unit_out", "W"),
-            "params": {"coeffs": data["coeffs"]},
-        }
-    elif model_key == "adapter.force_and_speed_to_power":
-        component = {
-            "id": data["id"],
-            "kind": "force_and_speed_to_power",
-            "source": "",
-            "unit_in": "",
-            "unit_out": data.get("unit_out", "W"),
-            "params": {
-                "force_source": data["force_source"],
-                "speed_source": data["speed_source"],
-                "force_unit_in": data.get("force_unit_in", "N"),
-                "speed_unit_in": data.get("speed_unit_in", "m/s"),
-                "clip_min": 0.0,
-            },
-        }
-    elif model_key == "adapter.speed_to_force_poly":
-        component = {
-            "id": data["id"],
-            "kind": "speed_to_force_poly",
-            "source": data["source"],
-            "unit_in": data.get("unit_in", "m/s"),
-            "unit_out": data.get("unit_out", "N"),
-            "params": {"coeffs": data["coeffs"]},
-        }
-    else:
-        raise ValueError(f"Modele non supporte: {model_key}")
 
-    return {
-        "template_name": data["id"],
-        "component_type": ctype,
-        "kind": kind,
-        "payload": {"component": component},
-    }
+def _fields_repr_for_model(model_key: str) -> dict[str, Any]:
+    if model_key in {"adapter.speed_to_power_poly", "adapter.speed_to_force_poly"}:
+        return {
+            "coeffs": fields.List(
+                render_type="scalar",
+                n_cols="var(--pydf-form-cols)",
+                wrapper_kwargs={
+                    "style": {
+                        "gridTemplateColumns": "repeat(5, minmax(0, 1fr))",
+                    }
+                },
+            )
+        }
+    return {}
 
 
 app = Dash(
     __name__,
+    suppress_callback_exceptions=True,
     external_stylesheets=[
         "https://unpkg.com/@mantine/dates@7/styles.css",
         "https://unpkg.com/@mantine/code-highlight@7/styles.css",
@@ -174,6 +126,9 @@ app = Dash(
     ],
 )
 app.title = "CGN V2 - Proto Formulaire Local"
+
+_default_key = _default_model_key("converter")
+_default_model_cls = MODEL_SPECS[_default_key]["model"] if _default_key else ConstantEtaConverter
 
 app.layout = dmc.MantineProvider(
     dmc.Container(
@@ -187,12 +142,22 @@ app.layout = dmc.MantineProvider(
                     dcc.Dropdown(id="v2-local-type", options=TYPE_OPTIONS, value="converter", clearable=False),
                     html.Div(style={"height": "8px"}),
                     html.Label("Modele composant"),
-                    dcc.Dropdown(id="v2-local-model", options=_model_options("converter"), value=_default_model_key("converter"), clearable=False),
+                    dcc.Dropdown(id="v2-local-model", options=_model_options("converter"), value=_default_key, clearable=False),
                     html.Div(style={"height": "10px"}),
                     html.Details(
                         [
                             html.Summary("Formulaire composant"),
-                            html.Div(id="v2-local-form-container"),
+                            html.Div(
+                                id="v2-local-form-container",
+                                children=ModelForm(
+                                    _default_model_cls,
+                                    AIO_ID,
+                                    FORM_ID,
+                                    debounce=200,
+                                    form_cols=10,
+                                    fields_repr=_fields_repr_for_model(_default_key or ""),
+                                ),
+                            ),
                         ],
                         open=True,
                     ),
@@ -214,7 +179,7 @@ app.layout = dmc.MantineProvider(
                     dash_table.DataTable(
                         id="v2-local-table",
                         columns=[
-                            {"name": "Nom", "id": "template_name"},
+                            {"name": "Nom", "id": "name"},
                             {"name": "Type", "id": "component_type"},
                             {"name": "Kind", "id": "kind"},
                         ],
@@ -254,7 +219,14 @@ def render_dynamic_form(model_key: str | None):
     if not model_key or model_key not in MODEL_SPECS:
         return html.Div("Aucun modele pour ce type.")
     model_cls = MODEL_SPECS[model_key]["model"]
-    return ModelForm(model_cls, AIO_ID, FORM_ID, debounce=200)
+    return ModelForm(
+        model_cls,
+        AIO_ID,
+        FORM_ID,
+        debounce=200,
+        form_cols=10,
+        fields_repr=_fields_repr_for_model(model_key),
+    )
 
 
 @callback(
@@ -262,15 +234,22 @@ def render_dynamic_form(model_key: str | None):
     Input("v2-local-validate", "n_clicks"),
     State("v2-local-model", "value"),
     State(ModelForm.ids.main(AIO_ID, FORM_ID), "data"),
+    State("v2-local-components", "data"),
     prevent_initial_call=True,
 )
-def validate_form(_: int, model_key: str | None, form_data: dict[str, Any] | None):
+def validate_form(_: int, model_key: str | None, form_data: dict[str, Any] | None, items: list[dict[str, Any]] | None):
     if not model_key:
         return "Choisis un modele."
     if not isinstance(form_data, dict):
         return "Formulaire vide."
     try:
-        _to_component_payload(model_key, form_data)
+        raw = _to_validated_form_dict(model_key, form_data)
+        name = str(raw.get("id", "")).strip()
+        if not name:
+            return "Erreur validation: le champ 'id' (Nom) est obligatoire."
+        existing = {str(it.get("name", "")).strip() for it in (items or [])}
+        if name in existing:
+            return f"Erreur validation: le nom '{name}' existe deja (tous types confondus)."
         return "Validation OK. Tu peux ajouter en local."
     except ValidationError as exc:
         return f"Erreur validation: {exc.errors()}"
@@ -293,10 +272,21 @@ def add_local_component(_: int, model_key: str | None, form_data: dict[str, Any]
     if not isinstance(form_data, dict):
         return no_update, "Formulaire vide."
     try:
-        payload = _to_component_payload(model_key, form_data)
+        raw = _to_validated_form_dict(model_key, form_data)
+        spec = MODEL_SPECS[model_key]
+        display_name = str(raw.get("id", "")).strip() or f"item_{len(items or [])+1}"
+        existing = {str(it.get("name", "")).strip() for it in (items or [])}
+        if display_name in existing:
+            return no_update, f"Erreur ajout local: le nom '{display_name}' existe deja (tous types confondus)."
+        entry = {
+            "name": display_name,
+            "component_type": str(spec["component_type"]),
+            "kind": str(spec["kind"]),
+            "data": raw,
+        }
         current = list(items or [])
-        current.append(payload)
-        return current, f"Composant local ajoute: {payload['template_name']}"
+        current.append(entry)
+        return current, f"Composant local ajoute: {display_name}"
     except ValidationError as exc:
         return no_update, f"Erreur validation: {exc.errors()}"
     except Exception as exc:  # noqa: BLE001
@@ -309,18 +299,28 @@ def add_local_component(_: int, model_key: str | None, form_data: dict[str, Any]
     Input("v2-local-components", "data"),
 )
 def render_local_items(items: list[dict[str, Any]] | None):
-    rows = list(items or [])
-    return rows, json.dumps(rows, ensure_ascii=False, indent=2)
+    rows = [
+        {
+            "name": str(it.get("name", "")),
+            "component_type": str(it.get("component_type", "")),
+            "kind": str(it.get("kind", "")),
+        }
+        for it in (items or [])
+    ]
+    return rows, json.dumps(list(items or []), ensure_ascii=False, indent=2)
 
 
 @callback(
     Output("v2-local-components", "data", allow_duplicate=True),
     Input("v2-local-table", "data_timestamp"),
     State("v2-local-table", "data"),
+    State("v2-local-components", "data"),
     prevent_initial_call=True,
 )
-def sync_local_store_from_table(_: int, rows: list[dict[str, Any]] | None):
-    return list(rows or [])
+def sync_local_store_from_table(_: int, rows: list[dict[str, Any]] | None, items: list[dict[str, Any]] | None):
+    keep_names = {str(r.get("name", "")).strip() for r in (rows or []) if str(r.get("name", "")).strip()}
+    current = list(items or [])
+    return [it for it in current if str(it.get("name", "")).strip() in keep_names]
 
 
 if __name__ == "__main__":
