@@ -1016,12 +1016,24 @@ class Vessel:
                     "As-tu appelé apply_inputs_to_solver() (et éventuellement run_vector()) ?"
                 )
 
+            # Compat: nouveau nom vector_energy, fallback ancien vecteur.
+            vector_name = getattr(scfg, "vector_energy", None)
+            if vector_name is None:
+                vector_name = getattr(scfg, "vecteur", None)
+            vector_params = getattr(scfg, "vector_params", None)
+            vector_params_dict = (
+                vector_params.model_dump(exclude_none=True)
+                if vector_params is not None and hasattr(vector_params, "model_dump")
+                else None
+            )
+
             res = StorageResult.from_bus(
                 id=scfg.id,
                 bus_id=scfg.bus,
                 bus_net_w=bus.net_w,
                 dt=self.dt,
-                vecteur=scfg.vecteur,  # juste mémorisé, pas utilisé par le tally générique
+                vector=vector_name,  # juste mémorisé, pas utilisé par le tally générique
+                vector_params=vector_params_dict,
             )
             results[scfg.id] = res
 
@@ -1111,6 +1123,18 @@ class Vessel:
                 return "W"
             if col.endswith("_J"):
                 return "J"
+            if col.endswith("_kg"):
+                return "kg"
+            if col.endswith("_kg_per_s"):
+                return "kg/s"
+            if col.endswith("_m3"):
+                return "m3"
+            if col.endswith("_m3_per_s"):
+                return "m3/s"
+            if col.endswith("_l"):
+                return "l"
+            if col.endswith("_l_per_s"):
+                return "l/s"
             return None
 
         def _strip_storage_suffix(col: str, unit: str | None) -> str:
@@ -1120,6 +1144,18 @@ class Vessel:
                 return col[:-2]
             if unit == "J" and col.endswith("_J"):
                 return col[:-2]
+            if unit == "kg" and col.endswith("_kg"):
+                return col[:-3]
+            if unit == "kg/s" and col.endswith("_kg_per_s"):
+                return col[:-9]
+            if unit == "m3" and col.endswith("_m3"):
+                return col[:-3]
+            if unit == "m3/s" and col.endswith("_m3_per_s"):
+                return col[:-9]
+            if unit == "l" and col.endswith("_l"):
+                return col[:-2]
+            if unit == "l/s" and col.endswith("_l_per_s"):
+                return col[:-8]
             return col
 
         # --- time
@@ -1392,9 +1428,6 @@ converters:
     
     
     
-
-
-
 
 
 

@@ -6,9 +6,11 @@ Post-traitement generique des bus de stockage (tally energie/puissance).
 
 from __future__ import annotations
 
+from typing import Any
 from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
+from cgn_model.vessel_model.utils import pci_to_j_per_kg, pci_to_j_per_m3
 
 type FArray = NDArray[np.floating]
 
@@ -29,7 +31,7 @@ class StorageResult:
 
     Remarques :
       - Pas de clip : on n'écrase aucune information au tally.
-      - L'enrichissement “vecteur” (kg, m^3, SoC, etc.) se fera en post-traitement,
+      - L'enrichissement “vector” (kg, m^3, SoC, etc.) se fera en post-traitement,
         en ajoutant des colonnes au DataFrame si un vecteur est choisi.
     """
     id: str
@@ -45,7 +47,14 @@ class StorageResult:
     e_neg_J: FArray
 
     # Métadonnée optionnelle
-    vecteur: str | None = None
+    vector: str | None = None
+    vector_params: dict[str, Any] | None = None
+    m_dot_kg_per_s: FArray | None = None
+    m_cum_kg: FArray | None = None
+    v_dot_m3_per_s: FArray | None = None
+    v_cum_m3: FArray | None = None
+    v_dot_l_per_s: FArray | None = None
+    v_cum_l: FArray | None = None
 
     @property
     def N(self) -> int:
@@ -70,7 +79,8 @@ class StorageResult:
         bus_id: str,
         bus_net_w: FArray,
         dt: float,
-        vecteur: str | None = None,
+        vector: str | None = None,
+        vector_params: dict[str, Any] | None = None,
     ) -> "StorageResult":
         """
         Construit le tally à partir du signal net_w d'un bus et du pas dt.
@@ -88,12 +98,55 @@ class StorageResult:
         e_pos_J  = np.cumsum(p_pos_W) * float(dt)
         e_neg_J  = np.cumsum(p_neg_W) * float(dt)
 
+        m_dot_kg_per_s: FArray | None = None
+        m_cum_kg: FArray | None = None
+        v_dot_m3_per_s: FArray | None = None
+        v_cum_m3: FArray | None = None
+        v_dot_l_per_s: FArray | None = None
+        v_cum_l: FArray | None = None
+
+        vp = vector_params if isinstance(vector_params, dict) else {}
+        basis = vp.get("pci_basis")
+        pci_value = vp.get("pci_value")
+        density = vp.get("density_kg_m3")
+        pci_mass_unit = vp.get("pci_mass_unit")
+        pci_volume_unit = vp.get("pci_volume_unit")
+
+        if basis == "mass" and pci_value is not None and pci_mass_unit is not None:
+            pci_j_per_kg = pci_to_j_per_kg(float(pci_value), str(pci_mass_unit))
+            m_dot_kg_per_s = p / pci_j_per_kg
+            m_cum_kg = np.cumsum(m_dot_kg_per_s) * float(dt)
+
+            if density is not None and float(density) > 0:
+                v_dot_m3_per_s = m_dot_kg_per_s / float(density)
+                v_cum_m3 = np.cumsum(v_dot_m3_per_s) * float(dt)
+                v_dot_l_per_s = v_dot_m3_per_s * 1_000.0
+                v_cum_l = v_cum_m3 * 1_000.0
+
+        elif basis == "volume" and pci_value is not None and pci_volume_unit is not None:
+            pci_j_per_m3 = pci_to_j_per_m3(float(pci_value), str(pci_volume_unit))
+            v_dot_m3_per_s = p / pci_j_per_m3
+            v_cum_m3 = np.cumsum(v_dot_m3_per_s) * float(dt)
+            v_dot_l_per_s = v_dot_m3_per_s * 1_000.0
+            v_cum_l = v_cum_m3 * 1_000.0
+
+            if density is not None and float(density) > 0:
+                m_dot_kg_per_s = v_dot_m3_per_s * float(density)
+                m_cum_kg = np.cumsum(m_dot_kg_per_s) * float(dt)
+
         return cls(
             id=id, bus=bus_id, dt=float(dt),
             t_s=t_s,
             p_W=p, p_pos_W=p_pos_W, p_neg_W=p_neg_W,
             e_cum_J=e_cum_J, e_pos_J=e_pos_J, e_neg_J=e_neg_J,
-            vecteur=vecteur,
+            vector=vector,
+            vector_params=vector_params,
+            m_dot_kg_per_s=m_dot_kg_per_s,
+            m_cum_kg=m_cum_kg,
+            v_dot_m3_per_s=v_dot_m3_per_s,
+            v_cum_m3=v_cum_m3,
+            v_dot_l_per_s=v_dot_l_per_s,
+            v_cum_l=v_cum_l,
         )
 
     def to_dataframe(self):
@@ -103,17 +156,28 @@ class StorageResult:
         (Import local pour ne pas imposer pandas si non utilisé ailleurs.)
         """
         import pandas as pd  # type: ignore
-        return pd.DataFrame(
-            {
-                "t_s":      self.t_s,
-                "p_W":      self.p_W,
-                "p_pos_W":  self.p_pos_W,
-                "p_neg_W":  self.p_neg_W,
-                "e_cum_J":  self.e_cum_J,
-                "e_pos_J":  self.e_pos_J,
-                "e_neg_J":  self.e_neg_J,
-            }
-        )
+        data: dict[str, FArray] = {
+            "t_s": self.t_s,
+            "p_W": self.p_W,
+            "p_pos_W": self.p_pos_W,
+            "p_neg_W": self.p_neg_W,
+            "e_cum_J": self.e_cum_J,
+            "e_pos_J": self.e_pos_J,
+            "e_neg_J": self.e_neg_J,
+        }
+        if self.m_dot_kg_per_s is not None:
+            data["m_dot_kg_per_s"] = self.m_dot_kg_per_s
+        if self.m_cum_kg is not None:
+            data["m_cum_kg"] = self.m_cum_kg
+        if self.v_dot_m3_per_s is not None:
+            data["v_dot_m3_per_s"] = self.v_dot_m3_per_s
+        if self.v_cum_m3 is not None:
+            data["v_cum_m3"] = self.v_cum_m3
+        if self.v_dot_l_per_s is not None:
+            data["v_dot_l_per_s"] = self.v_dot_l_per_s
+        if self.v_cum_l is not None:
+            data["v_cum_l"] = self.v_cum_l
+        return pd.DataFrame(data)
 
     # --- résumé structuré (dict) ---
     def summary_dict(self) -> dict[str, float]:
@@ -140,6 +204,9 @@ class StorageResult:
             "peak_consume_W": peak_consume_W,
             "N": self.N,
             "dt": float(self.dt),
+            "net_mass_kg": float(self.m_cum_kg[-1]) if self.m_cum_kg is not None else 0.0,
+            "net_volume_m3": float(self.v_cum_m3[-1]) if self.v_cum_m3 is not None else 0.0,
+            "net_volume_l": float(self.v_cum_l[-1]) if self.v_cum_l is not None else 0.0,
         }
     
     # --- propriété “jolie” (texte) ---

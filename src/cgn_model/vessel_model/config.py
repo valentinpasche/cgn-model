@@ -6,7 +6,7 @@ Schemas Pydantic des sections vessel (profiles, adapters, inputs, storages).
 
 from collections import Counter, deque
 from typing import Literal, Any, Annotated
-from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, field_validator
+from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, field_validator, AliasChoices
 
 type VesselType = Literal["DE", "steam", "undefined"]
 
@@ -236,7 +236,56 @@ class InputBindCfg(BaseModel):
             return synonyms.get(s, s)
         return v
 
-# ---- Storage / Vector specs à définir ---
+# ---- Storage + Vector specs optionnel ---
+
+from cgn_model.vessel_model.utils import PCI_Massic_Unit, PCI_Volumic_Unit
+
+class EnergyVectorParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pci_basis: Literal["mass","volume"] | None = None
+    pci_value: float | None = Field(ge=0, default=None)
+    pci_mass_unit: PCI_Massic_Unit | None = None
+    pci_volume_unit: PCI_Volumic_Unit | None = None
+    density_kg_m3: float | None = Field(ge=0,default=None)
+
+    @model_validator(mode="after")
+    def check_pci_consistency(self):
+        """
+        Regles de coherence:
+        - basis='mass'   => pci_mass_unit obligatoire, pci_volume_unit interdit
+        - basis='volume' => pci_volume_unit obligatoire, pci_mass_unit interdit
+        - basis absent   => aucune unite PCI ne doit etre renseignee
+        - pci_value suit la meme logique que basis
+        """
+        basis = self.pci_basis
+
+        if basis == "mass":
+            if self.pci_mass_unit is None:
+                raise ValueError("EnergyVectorParams: 'pci_mass_unit' obligatoire quand pci_basis='mass'.")
+            if self.pci_volume_unit is not None:
+                raise ValueError("EnergyVectorParams: ne pas renseigner 'pci_volume_unit' quand pci_basis='mass'.")
+            if self.pci_value is None:
+                raise ValueError("EnergyVectorParams: 'pci_value' obligatoire quand pci_basis='mass'.")
+
+        elif basis == "volume":
+            if self.pci_volume_unit is None:
+                raise ValueError("EnergyVectorParams: 'pci_volume_unit' obligatoire quand pci_basis='volume'.")
+            if self.pci_mass_unit is not None:
+                raise ValueError("EnergyVectorParams: ne pas renseigner 'pci_mass_unit' quand pci_basis='volume'.")
+            if self.pci_value is None:
+                raise ValueError("EnergyVectorParams: 'pci_value' obligatoire quand pci_basis='volume'.")
+
+        else:
+            # Pas de base PCI => pas de details PCI
+            if self.pci_mass_unit is not None or self.pci_volume_unit is not None or self.pci_value is not None:
+                raise ValueError(
+                    "EnergyVectorParams: renseignez 'pci_basis' ('mass' ou 'volume') "
+                    "avant d'ajouter pci_value / pci_mass_unit / pci_volume_unit."
+                )
+
+        return self
+
 class StorageCfg(BaseModel):
     """
     Declaration d'un stockage adosse a un bus du solver.
@@ -247,14 +296,21 @@ class StorageCfg(BaseModel):
         Identifiant du stockage cote vessel.
     bus : str
         Identifiant du bus cote solver.
-    vecteur : str | None
+    vector_energy : str | None
         Identifiant optionnel du vecteur energetique (diesel, H2, battery, ...).
+    vector_params : EnergyVectorParams | None
+        Parametres optionnels (PCI, densite, base mass/volume).
     """
     model_config = ConfigDict(extra="forbid")
 
     id: StrictStr
     bus: StrictStr
-    vecteur: StrictStr | None = None
+    vector_energy: StrictStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("vector_energy", "vector_name", "vector", "vecteur"),
+        serialization_alias="vector_energy",
+    )
+    vector_params: EnergyVectorParams | None = None
 
 # ---- top level
 class VesselSectionsCfg(BaseModel):
