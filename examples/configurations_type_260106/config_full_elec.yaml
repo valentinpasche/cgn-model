@@ -67,4 +67,4 @@ converters:
 storages:
   - id: "battery_pack"
     bus: "electric"
-    vecteur: "electrical"
+    vector_energy: "electrical"

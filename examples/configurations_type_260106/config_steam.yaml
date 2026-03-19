@@ -87,4 +87,9 @@ converters:
 storages:
   - id: "fuel_tank"
     bus: "fuel"
-    vecteur: "diesel"
+    vector_energy: "diesel"
+    vector_params:
+      pci_basis: "volume"
+      pci_value: 9.8
+      pci_volume_unit: "kWh/l"
+      density_kg_m3: 830
