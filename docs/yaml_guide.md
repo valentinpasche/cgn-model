@@ -239,14 +239,53 @@ Declaration de bus a post-traiter en stockage.
 Champs :
 - id (str)
 - bus (str)
-- vecteur (str | null) : identifiant du vecteur (diesel, H2, battery)
+- vector_energy (str | null) : identifiant du vecteur (diesel, H2, battery)
+- vector_params (dict | null) : parametres optionnels de conversion energie -> masse/volume
+  - pci_basis (str) : "mass" | "volume"
+  - pci_value (float, > 0) : valeur du PCI
+  - pci_mass_unit (str) : requis si pci_basis="mass"
+    - "kWh/kg" | "MJ/kg" | "kJ/kg" | "J/kg"
+  - pci_volume_unit (str) : requis si pci_basis="volume"
+    - "kWh/l" | "kWh/m3" | "MJ/m3" | "kJ/m3" | "J/m3"
+  - density_kg_m3 (float, optionnel) : densite pour calculer aussi l'autre grandeur
+
+Regles de validation :
+- si pci_basis="mass" :
+  - pci_mass_unit obligatoire
+  - pci_volume_unit interdit
+- si pci_basis="volume" :
+  - pci_volume_unit obligatoire
+  - pci_mass_unit interdit
+- sans pci_basis :
+  - ne pas renseigner pci_value/pci_mass_unit/pci_volume_unit
+
+Compatibilite de nommage :
+- `vector_energy` est le champ recommande.
+- les alias suivants sont acceptes en lecture YAML : `vector_name`, `vector`, `vecteur`.
 
 Exemple :
 ```yaml
 storages:
   - id: "fuel_tank"
     bus: "Chemical:fuel"
-    vecteur: "diesel"
+    vector_energy: "diesel"
+    vector_params:
+      pci_basis: "mass"
+      pci_value: 11.86
+      pci_mass_unit: "kWh/kg"
+      density_kg_m3: 840.0
+```
+
+Exemple (base volumique) :
+```yaml
+storages:
+  - id: "h2_tank"
+    bus: "Chemical:h2"
+    vector_energy: "h2"
+    vector_params:
+      pci_basis: "volume"
+      pci_value: 3.0
+      pci_volume_unit: "kWh/m3"
 ```
 
 ## Kinds disponibles
