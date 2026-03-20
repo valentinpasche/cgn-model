@@ -32,7 +32,7 @@ Translemanique;101;Lausanne;10h55;5;20
 ;983;Montreux;19h32;23;63
 ;;Lausanne;20h35;;
 ;;;;;
-Petit-Lac — Grand-Lac;102;Geneve Mont-Blanc;10h45;1;9
+Petit-Lac - Grand-Lac;102;Geneve Mont-Blanc;10h45;1;9
 ;;Geneve Eaux-Vives;10h54;8;24
 ;;Versoix;11h18;4;15
 ;;Coppet;11h33;4;15
@@ -71,7 +71,7 @@ Petit-Lac — Grand-Lac;102;Geneve Mont-Blanc;10h45;1;9
 ;;Versoix;21h40;10;40
 ;;Geneve Mont-Blanc;22h20;;
 ;;;;;
-Lavaux — Haut-Lac;900;Lausanne;09h05;23;63
+Lavaux - Haut-Lac;900;Lausanne;09h05;23;63
 ;;Montreux;10h08;0;2
 ;903;Montreux;10h10;7;20
 ;;Vevey Marche;10h30;0;2
@@ -106,7 +106,7 @@ Lavaux — Haut-Lac;900;Lausanne;09h05;23;63
 ;;Vevey Marche;17h45;18;45
 ;;Lausanne;18h30;;
 ;;;;;
-Lavaux — Haut-Lac — Grand-Lac;904;Lausanne;10h20;3;10
+Lavaux - Haut-Lac - Grand-Lac;904;Lausanne;10h20;3;10
 ;;Pully;10h30;2;8
 ;;Lutry;10h38;4;15
 ;;Cully;10h53;5;17
