@@ -10,8 +10,12 @@ from dash_pydantic_form import ModelForm, fields
 from pydantic import BaseModel
 
 from components_basemodel import (
+    ConstantProfile,
     ConstantEtaConverter,
+    FileProfile,
     ForceAndSpeedToPowerAdapter,
+    NavSpeedProfile,
+    SeriesProfile,
     StorageGeneric,
     SpeedToForcePoly,
     SpeedToPowerPolyAdapter,
@@ -31,6 +35,26 @@ AIO_ID = "v2m-form"
 FORM_ID = "main"
 
 MODEL_SPECS: dict[str, dict[str, Any]] = {
+    "profile.constant": {
+        "component_type": "profile",
+        "kind": "constant",
+        "model": ConstantProfile,
+    },
+    "profile.series": {
+        "component_type": "profile",
+        "kind": "series",
+        "model": SeriesProfile,
+    },
+    "profile.file": {
+        "component_type": "profile",
+        "kind": "file",
+        "model": FileProfile,
+    },
+    "profile.nav_speed": {
+        "component_type": "profile",
+        "kind": "nav_speed",
+        "model": NavSpeedProfile,
+    },
     "converter.constant_eta": {
         "component_type": "converter",
         "kind": "constant_eta",
@@ -120,7 +144,73 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
     ctype = str(spec["component_type"])
     kind = str(spec["kind"])
 
-    if model_key == "converter.constant_eta":
+    if model_key == "profile.constant":
+        component = {
+            "id": raw["id"],
+            "kind": kind,
+            "unit": raw.get("unit", ""),
+            "value": raw.get("value"),
+        }
+    elif model_key == "profile.series":
+        component = {
+            "id": raw["id"],
+            "kind": kind,
+            "unit": raw.get("unit", ""),
+            "data": raw.get("data", []),
+        }
+    elif model_key == "profile.file":
+        component = {
+            "id": raw["id"],
+            "kind": kind,
+            "unit": raw.get("unit", ""),
+            "file": raw.get("file", ""),
+            "column": raw.get("column"),
+            "sep": raw.get("sep"),
+            "decimal": raw.get("decimal", "."),
+        }
+    elif model_key == "profile.nav_speed":
+        select_mode = str(raw.get("select", "cruise"))
+        select_payload: dict[str, Any]
+        if select_mode == "course":
+            select_payload = {
+                "by": "course",
+                "course_no": raw.get("course_no"),
+            }
+        else:
+            select_payload = {
+                "by": "cruise",
+                "cruise_name": raw.get("cruise_name"),
+            }
+
+        params_raw = raw.get("params", {}) if isinstance(raw.get("params"), dict) else {}
+
+        def _q(obj: Any, unit_fallback: str) -> float | None:
+            if isinstance(obj, dict):
+                try:
+                    return float(obj.get("value"))
+                except Exception:  # noqa: BLE001
+                    return None
+            if obj is None:
+                return None
+            try:
+                return float(obj)
+            except Exception:  # noqa: BLE001
+                return None
+
+        component = {
+            "id": raw["id"],
+            "kind": kind,
+            "unit": "m/s",
+            "source": "cgn_croisieres/all",
+            "select": select_payload,
+            "params": {
+                "acc": _q(params_raw.get("acc"), "m/s^2"),
+                "dec": _q(params_raw.get("dec"), "m/s^2"),
+                "v_croisiere": _q(params_raw.get("v_croisiere"), "m/s"),
+                "allow_delay": bool(params_raw.get("allow_delay", True)),
+            },
+        }
+    elif model_key == "converter.constant_eta":
         component = {
             "id": raw["id"],
             "kind": kind,
@@ -237,6 +327,44 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
     c = payload.get("component", {}) if isinstance(payload, dict) else {}
     p = c.get("params", {}) if isinstance(c.get("params"), dict) else {}
 
+    if key == "profile.constant":
+        return key, {
+            "id": c.get("id", ""),
+            "unit": c.get("unit", ""),
+            "value": c.get("value"),
+        }
+    if key == "profile.series":
+        return key, {
+            "id": c.get("id", ""),
+            "unit": c.get("unit", ""),
+            "data": c.get("data", []),
+        }
+    if key == "profile.file":
+        return key, {
+            "id": c.get("id", ""),
+            "unit": c.get("unit", ""),
+            "file": c.get("file", ""),
+            "column": c.get("column"),
+            "sep": c.get("sep"),
+            "decimal": c.get("decimal", "."),
+        }
+    if key == "profile.nav_speed":
+        sel = c.get("select", {}) if isinstance(c.get("select"), dict) else {}
+        by = str(sel.get("by", "cruise"))
+        params = c.get("params", {}) if isinstance(c.get("params"), dict) else {}
+        seed = {
+            "id": c.get("id", ""),
+            "select": "course" if by == "course" else "cruise",
+            "cruise_name": sel.get("cruise_name", "Translemanique"),
+            "course_no": sel.get("course_no"),
+            "params": {
+                "acc": {"value": params.get("acc", 0.5), "unit": "m/s^2"},
+                "dec": {"value": params.get("dec", 0.5), "unit": "m/s^2"},
+                "v_croisiere": {"value": params.get("v_croisiere", 7.0), "unit": "m/s"},
+                "allow_delay": bool(params.get("allow_delay", True)),
+            },
+        }
+        return key, seed
     if key == "converter.constant_eta":
         return key, {
             "id": c.get("id", ""),
