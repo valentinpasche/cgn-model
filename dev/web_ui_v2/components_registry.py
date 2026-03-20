@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from components_basemodel import (
     ConstantEtaConverter,
     ForceAndSpeedToPowerAdapter,
+    StorageGeneric,
     SpeedToForcePoly,
     SpeedToPowerPolyAdapter,
     VariableEtaConverter,
@@ -54,6 +55,11 @@ MODEL_SPECS: dict[str, dict[str, Any]] = {
         "component_type": "adapter",
         "kind": "speed_to_force_poly",
         "model": SpeedToForcePoly,
+    },
+    "storage.generic": {
+        "component_type": "storage",
+        "kind": "generic",
+        "model": StorageGeneric,
     },
 }
 
@@ -163,6 +169,61 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "unit_out": raw.get("unit_out", "N"),
             "params": {"coeffs": raw["coeffs"]},
         }
+    elif model_key == "storage.generic":
+        vector_params = raw.get("vector_params")
+        if isinstance(vector_params, dict):
+            basis = str(vector_params.get("pci_basis", "none"))
+            density = vector_params.get("density_kg_m3")
+
+            if basis == "mass" and isinstance(vector_params.get("pci_mass"), dict):
+                q = vector_params.get("pci_mass", {})
+                vector_params = {
+                    "pci_basis": "mass",
+                    "pci_value": q.get("value"),
+                    "pci_mass_unit": q.get("unit"),
+                    "density_kg_m3": density,
+                }
+            elif basis == "volume" and isinstance(vector_params.get("pci_volume"), dict):
+                q = vector_params.get("pci_volume", {})
+                vector_params = {
+                    "pci_basis": "volume",
+                    "pci_value": q.get("value"),
+                    "pci_volume_unit": q.get("unit"),
+                    "density_kg_m3": density,
+                }
+            else:
+                # support ancien format union (pci_value_unit) et cas "none"
+                pci_union = vector_params.get("pci_value_unit")
+                if isinstance(pci_union, dict):
+                    old_basis = pci_union.get("pci_basis")
+                    pci_q = pci_union.get("pci", {})
+                    if old_basis == "mass":
+                        vector_params = {
+                            "pci_basis": "mass",
+                            "pci_value": pci_q.get("value"),
+                            "pci_mass_unit": pci_q.get("unit"),
+                            "density_kg_m3": density,
+                        }
+                    elif old_basis == "volume":
+                        vector_params = {
+                            "pci_basis": "volume",
+                            "pci_value": pci_q.get("value"),
+                            "pci_volume_unit": pci_q.get("unit"),
+                            "density_kg_m3": density,
+                        }
+                    else:
+                        vector_params = None
+                else:
+                    vector_params = None
+        has_parameters = bool(raw.get("has_parameters", False))
+        component = {
+            "id": raw["id"],
+            "kind": kind,
+            # Champ visible mais auto-genere cote UI, conserve ici pour compat mode debug.
+            "bus": raw.get("bus"),
+            "vector_energy": raw.get("vector_energy"),
+            "vector_params": vector_params if has_parameters else None,
+        }
     else:
         raise ValueError(f"Modele non supporte: {model_key}")
 
@@ -214,6 +275,41 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
             "unit_in": c.get("unit_in", "m/s"),
             "unit_out": c.get("unit_out", "N"),
             "coeffs": p.get("coeffs", []),
+        }
+    if key == "storage.generic":
+        vp = c.get("vector_params")
+        basis = "none"
+        pci_mass = None
+        pci_volume = None
+        density = None
+        if isinstance(vp, dict):
+            basis = str(vp.get("pci_basis", "volume"))
+            density = vp.get("density_kg_m3")
+            pci_value = vp.get("pci_value")
+            if basis == "mass":
+                unit = vp.get("pci_mass_unit")
+                if pci_value is not None and unit:
+                    pci_mass = {"value": pci_value, "unit": unit}
+            elif basis == "volume":
+                unit = vp.get("pci_volume_unit")
+                if pci_value is not None and unit:
+                    pci_volume = {"value": pci_value, "unit": unit}
+        return key, {
+            "id": c.get("id", ""),
+            "bus": c.get("bus", "auto-genere"),
+            "vector_energy": c.get("vector_energy"),
+            "has_parameters": vp is not None,
+            "vector_params": {
+                "pci_basis": basis,
+                "pci_mass": pci_mass,
+                "pci_volume": pci_volume,
+                "density_kg_m3": density,
+            } if vp is not None else {
+                "pci_basis": "volume",
+                "pci_mass": None,
+                "pci_volume": None,
+                "density_kg_m3": None,
+            },
         }
     return None, {}
 

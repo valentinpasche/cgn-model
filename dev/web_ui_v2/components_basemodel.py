@@ -1,8 +1,33 @@
 
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from dash_pydantic_utils import Quantity
+from dash_pydantic_utils.quantity.quantity import ISUnits
 from dash_pydantic_form import fields
+
+
+def _register_pci_units() -> None:
+    """
+    Enregistre les unités PCI custom dans dash_pydantic_utils.Quantity.
+    Appelé au chargement du module pour rendre les champs Quantity compatibles.
+    """
+    # PCI massique: J/kg -> dimensions m^2/s^2
+    specific_energy = ISUnits(m=2, s=-2)
+    Quantity.register_unit_rates(specific_energy, "J/kg", 1.0, category="SpecificEnergy")
+    Quantity.register_unit_rates(specific_energy, "kJ/kg", 1_000.0)
+    Quantity.register_unit_rates(specific_energy, "MJ/kg", 1_000_000.0)
+    Quantity.register_unit_rates(specific_energy, "kWh/kg", 3_600_000.0)
+
+    # PCI volumique: J/m3 -> dimensions kg/(m*s^2) (même dimension que Pa)
+    volumic_energy = ISUnits(kg=1, m=-1, s=-2)
+    Quantity.register_unit_rates(volumic_energy, "J/m^3", 1.0)
+    Quantity.register_unit_rates(volumic_energy, "kJ/m^3", 1_000.0)
+    Quantity.register_unit_rates(volumic_energy, "MJ/m^3", 1_000_000.0)
+    Quantity.register_unit_rates(volumic_energy, "kWh/m^3", 3_600_000.0)
+    Quantity.register_unit_rates(volumic_energy, "kWh/dm^3", 3_600_000_000.0)
+
+
+_register_pci_units()
 
 
 class VariableEtaConverter(BaseModel):
@@ -128,43 +153,50 @@ class SpeedToForcePoly(BaseModel):
     coeffs: list[float] = Field(title="Coefficients polynomiaux (ordre croissant)", min_length=1, default_factory=list, description="F(v) = a0 + a1*v + a2*v^2 + ...")
 
 
-default_repr_kwargs = {"decimalScale": 3, "thousandSeparator": "'"}
-
-class MassPCI(BaseModel):
-    pci_basis: Literal["mass"]
-    pci: Quantity = Field(
-        title="PCI massique",
-        description="Valeur et unité",
-        ge=0,
-#        default=None,
-        repr_type="Quantity", repr_kwargs={
-            "unit_options": ["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"],
-            **default_repr_kwargs}
-    )
-
-class VolumePCI(BaseModel):
-    pci_basis: Literal["volume"]
-    pci: Quantity = Field(
-        title="PCI volumique",
-        description="Valeur et unité",
-        ge=0,
-#        default=None,
-        repr_type="Quantity", repr_kwargs={
-            "unit_options": ["kWh/l", "kWh/m3", "MJ/m3", "kJ/m3", "J/m3"],
-            **default_repr_kwargs}
-    )
+default_repr_kwargs = {"decimalScale": 2, "thousandSeparator": "'"}
 
 class EnergyVectorParams(BaseModel):
-    pci_value_unit: VolumePCI | MassPCI = Field(
-        title="Pouvoir Calorifique Inférieur",
-        description="Exprimé par unité de volume ou de masse.",
-#        default=None,
-        discriminator="pci_basis",
+    pci_basis: Literal["volume", "mass"] = Field(
+        title="Type de PCI",
+        default="volume",
         repr_kwargs={
-            "fields_repr": {"pci_basis": fields.RadioItems(options_labels={"volume": "Volumique", "mass": "Massique"})}
+            "field_repr": fields.RadioItems(
+                options_labels={"volume": "Volumique", "mass": "Massique"}
+            )
         },
     )
-    density_kg_m3: float | None = Field(title="Densité en kilo par mètre cube", ge=0, default=None, repr_kwargs={"suffix": " kg/m3"})
+    pci_mass: Quantity | None = Field(
+        title="PCI massique - Valeur et unité",
+        default=None,
+        repr_type="Quantity",
+        repr_kwargs={
+            "unit_options": ["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"],
+            "visible": ("pci_basis", "==", "mass"),
+            **default_repr_kwargs,
+        },
+    )
+    pci_volume: Quantity | None = Field(
+        title="PCI volumique - Valeur et unité",
+        default=None,
+        repr_type="Quantity",
+        repr_kwargs={
+            "unit_options": {"kWh/dm^3": "kWh/l", "kWh/m^3": "kWh/m³", "MJ/m^3": "MJ/m³", "kJ/m^3": "kJ/m³", "J/m^3": "J/m³"},
+            "visible": ("pci_basis", "==", "volume"),
+            **default_repr_kwargs,
+        },
+    )
+    density_kg_m3: float | None = Field(title="Densité en kilo par mètre cube", ge=0, default=None, repr_kwargs={"suffix": " kg/m³"})
+
+    @model_validator(mode="after")
+    def check_active_pci_field(self):
+        # Un seul champ actif requis selon pci_basis.
+        if self.pci_basis == "mass":
+            if self.pci_mass is None:
+                raise ValueError("PCI massique requis quand le type PCI est 'Massique'.")
+        elif self.pci_basis == "volume":
+            if self.pci_volume is None:
+                raise ValueError("PCI volumique requis quand le type PCI est 'Volumique'.")
+        return self
 
 class StorageGeneric(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant du stockage d'énergie.")
@@ -173,6 +205,7 @@ class StorageGeneric(BaseModel):
     has_parameters: bool = Field(title="Paramètres spécifiques au vecteur énergétique", description="Définition des paramètres")
     vector_params: EnergyVectorParams | None = Field(
         title="Paramètres du vecteur énergétique",
+        description="Déclarer des paramètres spécifiques, pouvoir calorifique inférieur et densité.",
         default=None,
         json_schema_extra={"repr_kwargs": {"visible": ("has_parameters", "==", True)}},
     )
