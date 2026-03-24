@@ -10,6 +10,7 @@ from dash_pydantic_form import ModelForm, fields
 from pydantic import BaseModel
 
 from components_basemodel import (
+    COURSES_NUMBER,
     ConstantProfile,
     ConstantEtaConverter,
     FileProfile,
@@ -35,25 +36,25 @@ AIO_ID = "v2m-form"
 FORM_ID = "main"
 
 MODEL_SPECS: dict[str, dict[str, Any]] = {
+    "profile.nav_speed": {
+        "component_type": "profile",
+        "kind": "nav_speed",
+        "model": NavSpeedProfile,
+    },
     "profile.constant": {
         "component_type": "profile",
         "kind": "constant",
         "model": ConstantProfile,
-    },
-    "profile.series": {
-        "component_type": "profile",
-        "kind": "series",
-        "model": SeriesProfile,
     },
     "profile.file": {
         "component_type": "profile",
         "kind": "file",
         "model": FileProfile,
     },
-    "profile.nav_speed": {
+    "profile.series": {
         "component_type": "profile",
-        "kind": "nav_speed",
-        "model": NavSpeedProfile,
+        "kind": "series",
+        "model": SeriesProfile,
     },
     "converter.constant_eta": {
         "component_type": "converter",
@@ -108,7 +109,15 @@ def default_model_key(component_type: str) -> str | None:
     return str(opts[0]["value"])
 
 
-def fields_repr(model_key: str | None) -> dict[str, Any]:
+def _course_options_for_cruise(cruise_name: str | None) -> list[dict[str, str]]:
+    if cruise_name and cruise_name in COURSES_NUMBER:
+        values = COURSES_NUMBER[cruise_name]
+    else:
+        values = sorted({n for course_list in COURSES_NUMBER.values() for n in course_list})
+    return [{"value": str(n), "label": str(n)} for n in values]
+
+
+def fields_repr(model_key: str | None, seed: dict[str, Any] | None = None) -> dict[str, Any]:
     if model_key in {"adapter.speed_to_power_poly", "adapter.speed_to_force_poly"}:
         return {
             "coeffs": fields.List(
@@ -116,6 +125,13 @@ def fields_repr(model_key: str | None) -> dict[str, Any]:
                 n_cols="var(--pydf-form-cols)",
                 wrapper_kwargs={"style": {"gridTemplateColumns": "repeat(5, minmax(0, 1fr))"}},
             )
+        }
+    if model_key == "profile.nav_speed":
+        cruise_name = None
+        if isinstance(seed, dict):
+            cruise_name = seed.get("cruise_name")
+        return {
+            "course_no": fields.Select(data=_course_options_for_cruise(str(cruise_name) if cruise_name else None))
         }
     return {}
 
@@ -131,7 +147,7 @@ def render_form(model_key: str | None, seed: dict[str, Any] | None):
         except Exception:  # noqa: BLE001
             safe_seed = {k: v for k, v in seed.items() if k in model_cls.model_fields}
             item = model_cls.model_construct(**safe_seed)
-    return ModelForm(item, AIO_ID, FORM_ID, debounce=200, form_cols=10, fields_repr=fields_repr(model_key))
+    return ModelForm(item, AIO_ID, FORM_ID, debounce=200, form_cols=10, fields_repr=fields_repr(model_key, seed))
 
 
 def validate_form_data(model_key: str, form_data: dict[str, Any]) -> dict[str, Any]:
@@ -172,9 +188,13 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
         select_mode = str(raw.get("select", "cruise"))
         select_payload: dict[str, Any]
         if select_mode == "course":
+            course_raw = raw.get("course_no")
+            course_no = None
+            if course_raw is not None and str(course_raw).strip():
+                course_no = int(str(course_raw))
             select_payload = {
                 "by": "course",
-                "course_no": raw.get("course_no"),
+                "course_no": course_no,
             }
         else:
             select_payload = {
@@ -204,8 +224,8 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "source": "cgn_croisieres/all",
             "select": select_payload,
             "params": {
-                "acc": _q(params_raw.get("acc"), "m/s^2"),
-                "dec": _q(params_raw.get("dec"), "m/s^2"),
+                "acc": _q(params_raw.get("acc"), "m*s^-2"),
+                "dec": _q(params_raw.get("dec"), "m*s^-2"),
                 "v_croisiere": _q(params_raw.get("v_croisiere"), "m/s"),
                 "allow_delay": bool(params_raw.get("allow_delay", True)),
             },
@@ -356,10 +376,10 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
             "id": c.get("id", ""),
             "select": "course" if by == "course" else "cruise",
             "cruise_name": sel.get("cruise_name", "Translemanique"),
-            "course_no": sel.get("course_no"),
+            "course_no": str(sel.get("course_no")) if sel.get("course_no") is not None else None,
             "params": {
-                "acc": {"value": params.get("acc", 0.5), "unit": "m/s^2"},
-                "dec": {"value": params.get("dec", 0.5), "unit": "m/s^2"},
+                "acc": {"value": params.get("acc", 0.5), "unit": "m*s^-2"},
+                "dec": {"value": params.get("dec", 0.5), "unit": "m*s^-2"},
                 "v_croisiere": {"value": params.get("v_croisiere", 7.0), "unit": "m/s"},
                 "allow_delay": bool(params.get("allow_delay", True)),
             },

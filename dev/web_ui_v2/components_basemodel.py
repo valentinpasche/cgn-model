@@ -43,7 +43,7 @@ _register_speed_units()
 
 class VariableEtaConverter(BaseModel):
     """
-    Convertisseur a rendement variable, eta(t).
+    Convertisseur a rendement variable, eta(t)
 
     Parameters
     ----------
@@ -59,12 +59,12 @@ class VariableEtaConverter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant du convertisseur de puissance.")
     from_bus: str | None = Field(title="Entrée puissance", default=None, description="Nom du composant en amont.")
     to_bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
-    eta_source: str = Field(title="Profil de rendement, (0 < eta <= 1)")
+    eta_source: str = Field(title="Profil de rendement, (0 < eta <= 1)", description="Nom/identifiant du profil de rendement source.")
 
 
 class ConstantEtaConverter(BaseModel):
     """
-    Convertisseur a rendement constant.
+    Convertisseur a rendement constant
 
     Parameters
     ----------
@@ -80,13 +80,13 @@ class ConstantEtaConverter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant du convertisseur de puissance.")
     from_bus: str | None = Field(title="Entrée puissance", default=None, description="Nom du composant en amont.")
     to_bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
-    eta: float = Field(title="Rendement, (0 < eta <= 1)", gt=0, le=1, allow_inf_nan=False)
+    eta: float = Field(title="Rendement, (0 < eta <= 1)", gt=0, le=1, allow_inf_nan=False, description="Valeur numérique entre 0 et 1.")
 
 
 
 class SpeedToPowerPolyAdapter(BaseModel):
     """
-    Adaptateur vitesse -> puissance via polynome.
+    Adaptateur vitesse -> puissance via polynome
 
     Parameters
     ----------
@@ -104,14 +104,14 @@ class SpeedToPowerPolyAdapter(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
-    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité entrée", default="m/s")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité sortie", default="W")
+    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
     coeffs: list[float] = Field(title="Coefficients polynomiaux (ordre croissant)", min_length=1, default_factory=list, description="P(v) = a0 + a1*v + a2*v^2 + ...")
 
 
 class ForceAndSpeedToPowerAdapter(BaseModel):
     """
-    Adaptateur multi-entrees: puissance = force * vitesse.
+    Adaptateur multi-entrees: puissance = force * vitesse
 
     Parameters
     ----------
@@ -133,15 +133,15 @@ class ForceAndSpeedToPowerAdapter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     force_source: str = Field(title="Profil de force source", description="Nom du profil de force en entrée.")
     speed_source: str = Field(title="Profil de vitesse source", description="Nom du profil de vitesse en entrée.")
-    force_unit_in: Literal["N", "kN", "MN"] = Field(title="Unité force", default="N")
-    speed_unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité vitesse", default="m/s")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité puissance", default="W")
+    force_unit_in: Literal["N", "kN", "MN"] = Field(title="Unité de force, en entrée", default="N")
+    speed_unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
     
 
 
 class SpeedToForcePoly(BaseModel):
     """
-    Adaptateur vitesse -> force via polynome.
+    Adaptateur vitesse -> force via polynome
 
     Parameters
     ----------
@@ -159,8 +159,8 @@ class SpeedToForcePoly(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
-    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité entrée", default="m/s")
-    unit_out: Literal["N", "kN", "MN"] = Field(title="Unité sortie", default="N")
+    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_out: Literal["N", "kN", "MN"] = Field(title="Unité de force, en sortie", default="N")
     coeffs: list[float] = Field(title="Coefficients polynomiaux (ordre croissant)", min_length=1, default_factory=list, description="F(v) = a0 + a1*v + a2*v^2 + ...")
 
 
@@ -170,10 +170,11 @@ class EnergyVectorParams(BaseModel):
     pci_basis: Literal["volume", "mass"] = Field(
         title="Type de PCI",
         default="volume",
-        repr_kwargs={
-            "field_repr": fields.RadioItems(
-                options_labels={"volume": "Volumique", "mass": "Massique"}
-            )
+        json_schema_extra={
+            "repr_type": "RadioItems",
+            "repr_kwargs": {
+                "options_labels": {"volume": "Volumique", "mass": "Massique"}
+            },
         },
     )
     pci_mass: Quantity | None = Field(
@@ -211,7 +212,7 @@ class EnergyVectorParams(BaseModel):
 
 class StorageGeneric(BaseModel):
     """
-    Stockage d'énergie générique (combustible/autre).
+    Stockage d'énergie générique (combustible/autre)
     """
     id: str = Field(title="Nom", description="Nom/identifiant du stockage d'énergie.")
     bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
@@ -227,7 +228,7 @@ class StorageGeneric(BaseModel):
 
 class ConstantProfile(BaseModel):
     """
-    Profil constant.
+    Profil constant
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
     unit: str = Field(title="Unité du profil", description="Unité de la valeur constante.")
@@ -235,7 +236,7 @@ class ConstantProfile(BaseModel):
 
 class SeriesProfile(BaseModel):
     """
-    Profil serie explicite.
+    Profil serie explicite
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
     unit: str = Field(title="Unité du profil", description="Unité de la série de valeurs.")
@@ -243,7 +244,7 @@ class SeriesProfile(BaseModel):
 
 class FileProfile(BaseModel):
     """
-    Profil chargé depuis un fichier CSV.
+    Profil chargé depuis un fichier CSV
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
     file: str = Field(title="Nom du CSV", description="Chemin d'accès complet (absolut) du fichier CSV d'entrée.")
@@ -264,35 +265,35 @@ ALL_COURSE_NUMBERS = sorted({n for courses in COURSES_NUMBER.values() for n in c
 
 class NavParams(BaseModel):
     """
-    Parametres du profil de navigation (MRUA).
+    Parametres du profil de navigation (MRUA)
     """
     acc: Quantity = Field(
-        title="Accélération",
-        gt=0,
-        default_factory=lambda: Quantity(value=0.5, unit="m/s^2"),
+        title="Accélération (strictement positive)",
+        default_factory=lambda: Quantity(value=0.5, unit="m*s^-2"),
         repr_type="Quantity",
         repr_kwargs={
-            "unit_options": {"m/s^2": "m/s²",},
+            "unit_options": {"m*s^-2": "m/s²"},
+            "min": 0.01,
             **default_repr_kwargs,
         },
     )
     dec: Quantity = Field(
-        title="Décélération",
-        gt=0,
-        default_factory=lambda: Quantity(value=0.5, unit="m/s^2"),
+        title="Décélération (strictement positive)",
+        default_factory=lambda: Quantity(value=0.5, unit="m*s^-2"),
         repr_type="Quantity",
         repr_kwargs={
-            "unit_options": {"m/s^2": "m/s²",},
+            "unit_options": {"m*s^-2": "m/s²"},
+            "min": 0.01,
             **default_repr_kwargs,
         },
     )
     v_croisiere: Quantity = Field(
-        title="Vitesse de croisière - Positive",
-        gt=0,
+        title="Vitesse de croisière (strictement positive)",
         default_factory=lambda: Quantity(value=7.0, unit="m/s"),
         repr_type="Quantity",
         repr_kwargs={
             "unit_options": ["m/s", "km/h", "kn"],
+            "min": 0.01,
             **default_repr_kwargs,
         },
     )
@@ -303,60 +304,65 @@ class NavParams(BaseModel):
         repr_kwargs={"disabled": True},
     )
 
-
-class NavSelectCruise(BaseModel):
-    """
-    Selection par croisiere.
-    """
-    cruise_name: CRUISES_NAME = Field(title="Nom de la croisière CGN", description="...")
-
-class NavSelectCourse(BaseModel):
-    """
-    Selection par numero de course.
-    """
-    cruise_name: CRUISES_NAME = Field(title="Nom de la croisière CGN", description="...")
-    # course_no: COURSES_NUMBER = Field(title="Numéro de la course CGN", description="...")
+    @model_validator(mode="after")
+    def check_positive_quantities(self):
+        if float(self.acc.value) <= 0:
+            raise ValueError("L'accélération doit être strictement positive.")
+        if float(self.dec.value) <= 0:
+            raise ValueError("La décélération doit être strictement positive.")
+        if float(self.v_croisiere.value) <= 0:
+            raise ValueError("La vitesse de croisière doit être strictement positive.")
+        return self
 
 class NavSpeedProfile(BaseModel):
     """
-    Profil de vitesse construit à partir des horaires CGN. 
-    Belle poque  Haute saison 2025
+    Profil de vitesse construit à partir des horaires CGN
+    Belle-Epoque - Haute saison 2025
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil de navigation.")
     select: Literal["cruise", "course"] = Field(
-        title="Croisière ou Course CGN",
+        title="Horaire CGN, par type - Haute saison 2025",
+        description="Séléction de la catégorie du profil d'horaire à simuler.",
         default="cruise",
-        repr_kwargs={
-            "field_repr": fields.RadioItems(
-                options_labels={"cruise": "Croisière CGN", "course": "Course CGN"}
-            )
+        json_schema_extra={
+            "repr_type": "RadioItems",
+            "repr_kwargs": {
+                "options_labels": {"cruise": "Croisière CGN", "course": "Course CGN"}
+            },
         },
     )
-    cruise_name: CRUISES_NAME = Field(title="Nom de la croisière CGN", description="...")
-    course_no: int | None = Field(
-        title="Numéro de la course CGN",
-        description="Visible uniquement si le mode 'Course CGN' est sélectionné.",
+    cruise_name: CRUISES_NAME = Field(title="Nom de la croisière CGN - Haute saison 2025", description="Séléction du nom de la 'Croisière CGN' à simuler.")
+    course_no: str | None = Field(
+        title="Numéro de la course CGN - Haute saison 2025",
+        description="Séléction du numéro de la 'Course CGN' à simuler.",
         default=None,
         repr_kwargs={
             "visible": ("select", "==", "course"),
-            "field_repr": fields.Select(data=[{"value": str(n), "label": str(n)} for n in ALL_COURSE_NUMBERS]),
         },
     )
     # unit: str = "m/s"
     # source: str = "all"
-    params: NavParams = Field(default_factory=NavParams)
+    params: NavParams = Field(
+        title="Paramètres de vitesse de déplacement",
+        default_factory=NavParams,
+    )
 
     @model_validator(mode="after")
     def check_course_selection(self):
         if self.select == "course":
             if self.course_no is None:
                 raise ValueError("Le champ 'course_no' est obligatoire quand 'Course CGN' est sélectionné.")
+            try:
+                course_no_int = int(self.course_no)
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError("Le numéro de course doit être un entier valide.") from exc
             allowed = COURSES_NUMBER.get(self.cruise_name, [])
-            if self.course_no not in allowed:
+            if course_no_int not in allowed:
                 raise ValueError(
-                    f"Course {self.course_no} invalide pour la croisière '{self.cruise_name}'. "
+                    f"Course {course_no_int} invalide pour la croisière '{self.cruise_name}'. "
                     f"Valeurs autorisées: {allowed}"
                 )
+            self.course_no = str(course_no_int)
         else:
             # En mode 'cruise', on ignore explicitement le numéro de course.
             self.course_no = None

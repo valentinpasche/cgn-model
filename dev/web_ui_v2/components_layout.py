@@ -10,7 +10,7 @@ from components_registry import TYPE_OPTIONS, default_model_key, model_options, 
 
 
 def build_layout():
-    default_key = default_model_key("converter")
+    default_key = default_model_key("profile.nav_speed")
     return dmc.MantineProvider(
         html.Div(
             [
@@ -186,11 +186,11 @@ def build_layout():
                     [
                         html.Div(
                             [
-                                html.Label("Type composant"),
-                                dcc.Dropdown(id="v2m-type", options=TYPE_OPTIONS, value="converter", clearable=False),
+                                html.Label("Type de composant"),
+                                dcc.Dropdown(id="v2m-type", options=TYPE_OPTIONS, value="profile", clearable=False),
                                 html.Div(style={"height": "8px"}),
-                                html.Label("Modele composant"),
-                                dcc.Dropdown(id="v2m-model", options=model_options("converter"), value=default_key, clearable=False),
+                                html.Label("Modèle de composant"),
+                                dcc.Dropdown(id="v2m-model", options=model_options("profile"), value=default_key, clearable=False),
                                 html.Div(style={"height": "10px"}),
                                 html.Div(id="v2m-form-container", children=render_form(default_key, {})),
                                 html.Div(

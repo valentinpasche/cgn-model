@@ -8,6 +8,7 @@ from dash import Input, Output, State, ctx, no_update
 from dash_pydantic_form import ModelForm
 from pydantic import ValidationError
 
+from components_basemodel import COURSES_NUMBER
 from components_registry import (
     AIO_ID,
     FORM_ID,
@@ -294,6 +295,41 @@ def register_callbacks(app):
     )
     def render_form_cb(model_key: str | None, seed: dict[str, Any] | None):
         return render_form(model_key, seed if isinstance(seed, dict) else {})
+
+    @app.callback(
+        Output("v2m-form-seed", "data", allow_duplicate=True),
+        Input(ModelForm.ids.main(AIO_ID, FORM_ID), "data"),
+        State("v2m-model", "value"),
+        State("v2m-form-seed", "data"),
+        prevent_initial_call=True,
+    )
+    def nav_course_filter_seed(
+        form_data: dict[str, Any] | None,
+        model_key: str | None,
+        current_seed: dict[str, Any] | None,
+    ):
+        if model_key != "profile.nav_speed":
+            return no_update
+        if not isinstance(form_data, dict):
+            return no_update
+
+        cruise_name = str(form_data.get("cruise_name", ""))
+        select_mode = str(form_data.get("select", "cruise"))
+
+        prev = current_seed if isinstance(current_seed, dict) else {}
+        if cruise_name == str(prev.get("cruise_name", "")) and select_mode == str(prev.get("select", "cruise")):
+            return no_update
+
+        seed = dict(form_data)
+        if select_mode != "course":
+            seed["course_no"] = None
+            return seed
+
+        allowed = {str(n) for n in COURSES_NUMBER.get(cruise_name, [])}
+        course_no = seed.get("course_no")
+        if course_no is not None and str(course_no) not in allowed:
+            seed["course_no"] = None
+        return seed
 
     @app.callback(
         Output("v2m-type", "value", allow_duplicate=True),
