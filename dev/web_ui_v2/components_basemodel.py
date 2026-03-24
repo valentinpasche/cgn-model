@@ -216,7 +216,7 @@ class InitialStorageLevelFuel(BaseModel):
         default_factory=lambda: Quantity(value=1000.0, unit="dm^3"),
         repr_type="Quantity",
         repr_kwargs={
-            "unit_options": {"kg": "kg", "Mg": "t", "dm^3": "l", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
+            "unit_options": {"kg": "kg", "Mg": "tonne", "dm^3": "litre", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
             **default_repr_kwargs,
         },
     )
