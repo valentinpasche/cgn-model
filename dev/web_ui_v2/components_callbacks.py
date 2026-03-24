@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from dash import Input, Output, State, ctx, no_update
+from dash import Input, Output, State, ctx, html, no_update
 from dash_pydantic_form import ModelForm
 from pydantic import ValidationError
 
@@ -28,6 +29,18 @@ PLACEHOLDER_MERMAID = 'flowchart LR\n  n0["Visualisation DAG en cours de finalis
 
 
 def register_callbacks(app):
+    def _next_rev(rev: int | None) -> int:
+        return int(rev or 0) + 1
+
+    @app.callback(
+        Output("v2db-rev", "data"),
+        Input("v2db-refresh", "n_clicks"),
+        State("v2db-rev", "data"),
+        prevent_initial_call=True,
+    )
+    def manual_refresh(_: int, rev: int | None):
+        return _next_rev(rev)
+
     @app.callback(
         Output("v2cfg-save-name", "value"),
         Input("v2cfg-current", "data"),
@@ -55,13 +68,12 @@ def register_callbacks(app):
         Output("v2cfg-table", "data"),
         Output("v2cfg-mermaid", "chart"),
         Input("v2m-refresh", "n_intervals"),
+        Input("v2db-rev", "data"),
         Input("v2cfg-current", "data"),
         Input("v2cfg-save-db", "n_clicks"),
         Input("v2m-save-db", "n_clicks"),
-        Input("v2m-update-yes", "n_clicks"),
-        Input("v2m-delete-yes", "n_clicks"),
     )
-    def cfg_refresh(_: int, current_cfg: dict[str, Any] | None, __: int, ___: int, ____: int, _____: int):
+    def cfg_refresh(_: int, __: int, current_cfg: dict[str, Any] | None, ___: int, ____: int):
         current = current_cfg if isinstance(current_cfg, dict) else {"name": "config_local", "components": []}
         comps = current.get("components", [])
 
@@ -196,21 +208,24 @@ def register_callbacks(app):
     @app.callback(
         Output("v2m-select", "options"),
         Input("v2m-refresh", "n_intervals"),
-        Input("v2m-save-db", "n_clicks"),
-        Input("v2m-update-yes", "n_clicks"),
-        Input("v2m-delete-yes", "n_clicks"),
+        Input("v2db-rev", "data"),
     )
-    def selector_options(_: int, __: int, ___: int, ____: int):
+    def selector_options(_: int, __: int):
         return [{"label": str(r.get("name", "")), "value": str(r.get("name", ""))} for r in db_rows() if str(r.get("name", "")).strip()]
 
     @app.callback(
         Output("v2m-model", "options"),
         Output("v2m-model", "value"),
         Input("v2m-type", "value"),
+        State("v2m-model", "value"),
     )
-    def update_model_options(component_type: str):
+    def update_model_options(component_type: str, current_model: str | None):
         ctype = component_type or "converter"
-        return model_options(ctype), default_model_key(ctype)
+        options = model_options(ctype)
+        allowed = {str(opt.get("value", "")) for opt in options}
+        if current_model and str(current_model) in allowed:
+            return options, current_model
+        return options, default_model_key(ctype)
 
     @app.callback(
         Output("v2m-form-container", "children"),
@@ -218,7 +233,11 @@ def register_callbacks(app):
         Input("v2m-form-seed", "data"),
     )
     def render_form_cb(model_key: str | None, seed: dict[str, Any] | None):
-        return render_form(model_key, seed if isinstance(seed, dict) else {})
+        safe_seed = seed if isinstance(seed, dict) else {}
+        seed_json = json.dumps(safe_seed, ensure_ascii=False, sort_keys=True, default=str)
+        form_key = f"{model_key or 'none'}::{seed_json}"
+        # Force React remount when seed/model changes (fix stale form while switching DB profiles).
+        return html.Div(render_form(model_key, safe_seed), key=form_key)
 
     @app.callback(
         Output("v2m-form-seed", "data", allow_duplicate=True),
@@ -237,10 +256,31 @@ def register_callbacks(app):
         if not isinstance(form_data, dict):
             return no_update
 
+        # Guard against stale ModelForm events while switching between two nav_speed templates.
+        # If form_data belongs to a previous loaded item, ignore it.
+        prev = current_seed if isinstance(current_seed, dict) else {}
+        prev_id = str(prev.get("id", "")).strip()
+        form_id = str(form_data.get("id", "")).strip()
+        if prev_id and form_id and prev_id != form_id:
+            return no_update
+
+        # Guard: during remount, transient form states can momentarily emit "cruise"
+        # while a loaded seed is actually "course". Ignore that downgrade.
+        prev_select = str(prev.get("select", "cruise"))
+        form_select = str(form_data.get("select", "cruise"))
+        prev_course_no = prev.get("course_no")
+        form_course_no = form_data.get("course_no")
+        if (
+            prev_select == "course"
+            and form_select == "cruise"
+            and prev_course_no not in (None, "")
+            and form_course_no in (None, "")
+        ):
+            return no_update
+
         cruise_name = str(form_data.get("cruise_name", ""))
         select_mode = str(form_data.get("select", "cruise"))
 
-        prev = current_seed if isinstance(current_seed, dict) else {}
         if cruise_name == str(prev.get("cruise_name", "")) and select_mode == str(prev.get("select", "cruise")):
             return no_update
 
@@ -321,22 +361,24 @@ def register_callbacks(app):
         Output("v2m-status", "children", allow_duplicate=True),
         Output("v2m-pending-save", "data"),
         Output("v2m-update-modal", "opened"),
+        Output("v2db-rev", "data", allow_duplicate=True),
         Input("v2m-save-db", "n_clicks"),
         State("v2m-model", "value"),
         State(ModelForm.ids.main(AIO_ID, FORM_ID), "data"),
+        State("v2db-rev", "data"),
         prevent_initial_call=True,
     )
-    def save_component(_: int, model_key: str | None, form_data: dict[str, Any] | None):
+    def save_component(_: int, model_key: str | None, form_data: dict[str, Any] | None, rev: int | None):
         if not model_key:
-            return "Choisis un modele.", no_update, False
+            return "Choisis un modele.", no_update, False, no_update
         if not isinstance(form_data, dict):
-            return "Formulaire vide.", no_update, False
+            return "Formulaire vide.", no_update, False, no_update
 
         try:
             raw = validate_form_data(model_key, form_data)
             name = str(raw.get("id", "")).strip()
             if not name:
-                return "Nom requis.", no_update, False
+                return "Nom requis.", no_update, False, no_update
 
             ctype, kind, payload = payload_from_data(model_key, raw)
             exists = get_template_by_name(name) is not None
@@ -348,26 +390,28 @@ def register_callbacks(app):
             }
 
             if exists:
-                return f"Le nom '{name}' existe deja. Confirmation requise.", pending, True
+                return f"Le nom '{name}' existe deja. Confirmation requise.", pending, True, no_update
 
             upsert_template(name=name, family="General", component_type=ctype, kind=kind, payload=payload)
-            return f"Composant sauvegarde en DB: {name}", {}, False
+            return f"Composant sauvegarde en DB: {name}", {}, False, _next_rev(rev)
         except ValidationError as exc:
-            return f"Erreur validation: {exc.errors()}", no_update, False
+            return f"Erreur validation: {exc.errors()}", no_update, False, no_update
         except Exception as exc:  # noqa: BLE001
-            return f"Erreur sauvegarde: {exc}", no_update, False
+            return f"Erreur sauvegarde: {exc}", no_update, False, no_update
 
     @app.callback(
         Output("v2m-status", "children", allow_duplicate=True),
         Output("v2m-pending-save", "data", allow_duplicate=True),
         Output("v2m-update-modal", "opened", allow_duplicate=True),
+        Output("v2db-rev", "data", allow_duplicate=True),
         Input("v2m-update-yes", "n_clicks"),
         State("v2m-pending-save", "data"),
+        State("v2db-rev", "data"),
         prevent_initial_call=True,
     )
-    def confirm_update(_: int, pending: dict[str, Any] | None):
+    def confirm_update(_: int, pending: dict[str, Any] | None, rev: int | None):
         if not isinstance(pending, dict) or not pending:
-            return "Aucune mise a jour en attente.", {}, False
+            return "Aucune mise a jour en attente.", {}, False, no_update
 
         upsert_template(
             name=str(pending.get("name", "")),
@@ -376,7 +420,7 @@ def register_callbacks(app):
             kind=str(pending.get("kind", "")),
             payload=pending.get("payload", {}),
         )
-        return f"Composant DB mis a jour: {str(pending.get('name', ''))}", {}, False
+        return f"Composant DB mis a jour: {str(pending.get('name', ''))}", {}, False, _next_rev(rev)
 
     @app.callback(
         Output("v2m-update-modal", "opened", allow_duplicate=True),
@@ -401,19 +445,21 @@ def register_callbacks(app):
     @app.callback(
         Output("v2m-status", "children", allow_duplicate=True),
         Output("v2m-delete-modal", "opened", allow_duplicate=True),
+        Output("v2db-rev", "data", allow_duplicate=True),
         Input("v2m-delete-yes", "n_clicks"),
         State("v2m-select", "value"),
+        State("v2db-rev", "data"),
         prevent_initial_call=True,
     )
-    def confirm_delete(_: int, selected_value: str | None):
+    def confirm_delete(_: int, selected_value: str | None, rev: int | None):
         if not selected_value:
-            return "Aucune selection a supprimer.", False
+            return "Aucune selection a supprimer.", False, no_update
 
         t = get_template_by_name(selected_value)
         if t is None:
-            return "Composant DB introuvable.", False
+            return "Composant DB introuvable.", False, no_update
         delete_template(int(t["id"]))
-        return f"Composant DB supprime: {selected_value}", False
+        return f"Composant DB supprime: {selected_value}", False, _next_rev(rev)
 
     @app.callback(
         Output("v2m-delete-modal", "opened", allow_duplicate=True),

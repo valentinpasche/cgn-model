@@ -17,6 +17,7 @@ from components_basemodel import (
     ForceAndSpeedToPowerAdapter,
     NavSpeedProfile,
     SeriesProfile,
+    StorageFuel,
     StorageGeneric,
     SpeedToForcePoly,
     SpeedToPowerPolyAdapter,
@@ -80,6 +81,11 @@ MODEL_SPECS: dict[str, dict[str, Any]] = {
         "component_type": "adapter",
         "kind": "speed_to_force_poly",
         "model": SpeedToForcePoly,
+    },
+    "storage.fuel": {
+        "component_type": "storage",
+        "kind": "generic",
+        "model": StorageFuel,
     },
     "storage.generic": {
         "component_type": "storage",
@@ -158,7 +164,43 @@ def render_form(model_key: str | None, seed: dict[str, Any] | None):
 
 def validate_form_data(model_key: str, form_data: dict[str, Any]) -> dict[str, Any]:
     model_cls = MODEL_SPECS[model_key]["model"]
-    return model_cls.model_validate(form_data).model_dump(exclude_none=True)
+
+    def _clean(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            # Quantity in dash-pydantic-form can be emitted as {"value": None, "unit": "..."}.
+            # Treat it as None to avoid validation noise on hidden/inactive branches.
+            if "value" in obj and "unit" in obj and obj.get("value") is None:
+                return None
+            cleaned: dict[str, Any] = {}
+            for k, v in obj.items():
+                cv = _clean(v)
+                if cv is not None:
+                    cleaned[k] = cv
+            return cleaned
+        if isinstance(obj, list):
+            return [x for x in (_clean(v) for v in obj) if x is not None]
+        return obj
+
+    data = _clean(form_data)
+    if not isinstance(data, dict):
+        data = {}
+
+    # Storage form has mutually-exclusive blocks in UI; prune inactive branches explicitly.
+    if model_key == "storage.fuel":
+        vector_params = data.get("vector_params")
+        if isinstance(vector_params, dict):
+            basis = str(vector_params.get("pci_basis", "volume"))
+            if basis == "mass":
+                vector_params.pop("pci_volume", None)
+            elif basis == "volume":
+                vector_params.pop("pci_mass", None)
+        data.pop("initial_level_electrical", None)
+
+    if model_key == "storage.generic":
+        data.pop("vector_params", None)
+        data.pop("initial_level_fuel", None)
+
+    return model_cls.model_validate(data).model_dump(exclude_none=True)
 
 
 def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
@@ -181,14 +223,20 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "data": raw.get("data", []),
         }
     elif model_key == "profile.file":
+        sep = raw.get("sep", "auto")
+        if sep not in {"auto", ",", ";", "\t"}:
+            sep = "auto"
+        decimal = raw.get("decimal", ".")
+        if decimal not in {".", ","}:
+            decimal = "."
         component = {
             "id": raw["id"],
             "kind": kind,
             "unit": raw.get("unit", ""),
             "file": raw.get("file", ""),
             "column": raw.get("column"),
-            "sep": raw.get("sep"),
-            "decimal": raw.get("decimal", "."),
+            "sep": sep,
+            "decimal": decimal,
         }
     elif model_key == "profile.nav_speed":
         select_mode = str(raw.get("select", "cruise"))
@@ -285,8 +333,8 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "unit_out": raw.get("unit_out", "N"),
             "params": {"coeffs": raw["coeffs"]},
         }
-    elif model_key == "storage.generic":
-        vector_kind = str(raw.get("vector_kind", "fuel"))
+    elif model_key in {"storage.fuel", "storage.generic"}:
+        vector_kind = "fuel" if model_key == "storage.fuel" else "electrical"
         vector_params = raw.get("vector_params")
         if isinstance(vector_params, dict):
             basis = str(vector_params.get("pci_basis", "none"))
@@ -335,22 +383,21 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
         else:
             vector_params = None
 
-        if vector_kind != "fuel":
+        if model_key != "storage.fuel":
             vector_params = None
 
         initial_level_payload = None
-        if bool(raw.get("has_initial_level", False)):
-            q = None
-            if vector_kind == "electrical":
-                il_e = raw.get("initial_level_electrical")
-                if isinstance(il_e, dict):
-                    q = il_e.get("value")
-            else:
-                il_f = raw.get("initial_level_fuel")
-                if isinstance(il_f, dict):
-                    q = il_f.get("value")
-            if isinstance(q, dict) and q.get("value") is not None and q.get("unit") is not None:
-                initial_level_payload = {"value": q.get("value"), "unit": q.get("unit")}
+        q = None
+        if model_key == "storage.generic":
+            il_e = raw.get("initial_level_electrical")
+            if isinstance(il_e, dict):
+                q = il_e.get("value")
+        else:
+            il_f = raw.get("initial_level_fuel")
+            if isinstance(il_f, dict):
+                q = il_f.get("value")
+        if isinstance(q, dict) and q.get("value") is not None and q.get("unit") is not None:
+            initial_level_payload = {"value": q.get("value"), "unit": q.get("unit")}
 
         component = {
             "id": raw["id"],
@@ -369,10 +416,15 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
 
 
 def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
-    key = f"{component_type}.{kind}"
+    c = payload.get("component", {}) if isinstance(payload, dict) else {}
+    if component_type == "storage" and kind == "generic":
+        vec_kind = str(c.get("vector_kind", "electrical"))
+        key = "storage.fuel" if vec_kind == "fuel" else "storage.generic"
+    else:
+        key = f"{component_type}.{kind}"
     if key not in MODEL_SPECS:
         return None, {}
-    c = payload.get("component", {}) if isinstance(payload, dict) else {}
+
     p = c.get("params", {}) if isinstance(c.get("params"), dict) else {}
 
     if key == "profile.constant":
@@ -388,23 +440,44 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
             "data": c.get("data", []),
         }
     if key == "profile.file":
+        sep = c.get("sep", "auto")
+        if sep not in {"auto", ",", ";", "\t"}:
+            sep = "auto"
+        decimal = c.get("decimal", ".")
+        if decimal not in {".", ","}:
+            decimal = "."
         return key, {
             "id": c.get("id", ""),
             "unit": c.get("unit", ""),
             "file": c.get("file", ""),
             "column": c.get("column"),
-            "sep": c.get("sep"),
-            "decimal": c.get("decimal", "."),
+            "sep": sep,
+            "decimal": decimal,
         }
     if key == "profile.nav_speed":
         sel = c.get("select", {}) if isinstance(c.get("select"), dict) else {}
         by = str(sel.get("by", "cruise"))
+        course_no_raw = sel.get("course_no")
+        cruise_name = sel.get("cruise_name")
+
+        # Compat: older payloads in "course" mode may not carry cruise_name.
+        # Rebuild it from course_no to keep the UI in a coherent state.
+        if by == "course" and not cruise_name and course_no_raw is not None:
+            course_no_str = str(course_no_raw)
+            for cruise, numbers in COURSES_NUMBER.items():
+                if any(str(n) == course_no_str for n in numbers):
+                    cruise_name = cruise
+                    break
+
+        if not cruise_name:
+            cruise_name = "Translemanique"
+
         params = c.get("params", {}) if isinstance(c.get("params"), dict) else {}
         seed = {
             "id": c.get("id", ""),
             "select": "course" if by == "course" else "cruise",
-            "cruise_name": sel.get("cruise_name", "Translemanique"),
-            "course_no": str(sel.get("course_no")) if sel.get("course_no") is not None else None,
+            "cruise_name": cruise_name,
+            "course_no": str(course_no_raw) if course_no_raw is not None else None,
             "params": {
                 "acc": {"value": params.get("acc", 0.5), "unit": "m*s^-2"},
                 "dec": {"value": params.get("dec", 0.5), "unit": "m*s^-2"},
@@ -452,9 +525,8 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
             "unit_out": c.get("unit_out", "N"),
             "coeffs": p.get("coeffs", []),
         }
-    if key == "storage.generic":
+    if key in {"storage.fuel", "storage.generic"}:
         vp = c.get("vector_params")
-        vector_kind = str(c.get("vector_kind", "fuel"))
         basis = "none"
         pci_mass = None
         pci_volume = None
@@ -474,34 +546,38 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
 
         il = c.get("initial_level")
         has_initial_level = isinstance(il, dict) and il.get("value") is not None and il.get("unit") is not None
-        initial_level_fuel = None
-        initial_level_electrical = None
-        if has_initial_level:
-            value = il.get("value")
-            unit = il.get("unit")
-            if vector_kind == "electrical":
-                initial_level_electrical = {"value": {"value": value, "unit": unit}}
-            else:
-                initial_level_fuel = {"value": {"value": value, "unit": unit}}
+        value = il.get("value") if has_initial_level else None
+        unit = il.get("unit") if has_initial_level else None
+
+        if key == "storage.fuel":
+            return key, {
+                "id": c.get("id", ""),
+                "bus": c.get("bus", "auto-genere"),
+                "vector_energy": c.get("vector_energy"),
+                "vector_params": {
+                    "pci_basis": basis,
+                    "pci_mass": pci_mass,
+                    "pci_volume": pci_volume,
+                    "density_kg_m3": density,
+                } if vp is not None else {
+                    "pci_basis": "volume",
+                    "pci_mass": None,
+                    "pci_volume": None,
+                    "density_kg_m3": None,
+                },
+                "initial_level_fuel": {
+                    "value": {"value": value, "unit": unit}
+                } if has_initial_level else None,
+            }
+
+        # storage.generic (UI): no PCI block, only energy-like initial level
         return key, {
             "id": c.get("id", ""),
             "bus": c.get("bus", "auto-genere"),
             "vector_energy": c.get("vector_energy"),
-            "vector_kind": vector_kind,
-            "vector_params": {
-                "pci_basis": basis,
-                "pci_mass": pci_mass,
-                "pci_volume": pci_volume,
-                "density_kg_m3": density,
-            } if vp is not None else {
-                "pci_basis": "volume",
-                "pci_mass": None,
-                "pci_volume": None,
-                "density_kg_m3": None,
-            },
-            "has_initial_level": bool(has_initial_level),
-            "initial_level_fuel": initial_level_fuel,
-            "initial_level_electrical": initial_level_electrical,
+            "initial_level_electrical": {
+                "value": {"value": value, "unit": unit}
+            } if has_initial_level else None,
         }
     return None, {}
 

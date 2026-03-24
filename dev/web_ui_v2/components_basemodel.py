@@ -177,10 +177,15 @@ class EnergyVectorParams(BaseModel):
             },
         },
     )
-    density_kg_m3: float | None = Field(title="Densité en kilo par mètre cube", ge=0, default=None, repr_kwargs={"suffix": " kg/m³"})
+    density_kg_m3: float = Field(
+        title="Densité en kilo par mètre cube (obligatoire)",
+        gt=0,
+        default=850.0,
+        repr_kwargs={"suffix": " kg/m³"},
+    )
     pci_mass: Quantity | None = Field(
         title="PCI massique - Valeur et unité",
-        default=None,
+        default_factory=lambda: Quantity(value=42.6, unit="MJ/kg"),
         repr_type="Quantity",
         repr_kwargs={
             "unit_options": ["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"],
@@ -190,7 +195,7 @@ class EnergyVectorParams(BaseModel):
     )
     pci_volume: Quantity | None = Field(
         title="PCI volumique - Valeur et unité",
-        default=None,
+        default_factory=lambda: Quantity(value=10.06, unit="kWh/dm^3"),
         repr_type="Quantity",
         repr_kwargs={
             "unit_options": {"kWh/dm^3": "kWh/l", "kWh/m^3": "kWh/m³", "MJ/m^3": "MJ/m³", "kJ/m^3": "kJ/m³", "J/m^3": "J/m³"},
@@ -205,15 +210,19 @@ class EnergyVectorParams(BaseModel):
         if self.pci_basis == "mass":
             if self.pci_mass is None:
                 raise ValueError("PCI massique requis quand le type PCI est 'Massique'.")
+            if float(self.pci_mass.value) <= 0:
+                raise ValueError("Le PCI massique doit etre strictement positif.")
         elif self.pci_basis == "volume":
             if self.pci_volume is None:
                 raise ValueError("PCI volumique requis quand le type PCI est 'Volumique'.")
+            if float(self.pci_volume.value) <= 0:
+                raise ValueError("Le PCI volumique doit etre strictement positif.")
         return self
 
 class InitialStorageLevelFuel(BaseModel):
     value: Quantity = Field(
         title="Niveau initial - Combustible",
-        default_factory=lambda: Quantity(value=1000.0, unit="dm^3"),
+        default_factory=lambda: Quantity(value=0.0, unit="dm^3"),
         repr_type="Quantity",
         repr_kwargs={
             "unit_options": {"kg": "kg", "Mg": "tonne", "dm^3": "litre", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
@@ -221,10 +230,16 @@ class InitialStorageLevelFuel(BaseModel):
         },
     )
 
+    @model_validator(mode="after")
+    def check_non_negative_level(self):
+        if float(self.value.value) < 0:
+            raise ValueError("Le niveau initial combustible doit etre >= 0.")
+        return self
+
 class InitialStorageLevelElectrical(BaseModel):
     value: Quantity = Field(
         title="Niveau initial - Electrique",
-        default_factory=lambda: Quantity(value=32.0, unit="kWh"),
+        default_factory=lambda: Quantity(value=0.0, unit="kWh"),
         repr_type="Quantity",
         repr_kwargs={
             "unit_options": ["kWh", "Wh", "MWh", "J", "kJ", "MJ"],
@@ -232,52 +247,42 @@ class InitialStorageLevelElectrical(BaseModel):
         },
     )
 
-class StorageGeneric(BaseModel):
+    @model_validator(mode="after")
+    def check_non_negative_level(self):
+        if float(self.value.value) < 0:
+            raise ValueError("Le niveau initial electrique doit etre >= 0.")
+        return self
+
+class StorageFuel(BaseModel):
     """
-    Stockage d'énergie générique (combustible/autre)
+    Stockage - Combustible (avec PCI)
     """
     id: str = Field(title="Nom", description="Nom/identifiant du stockage d'énergie.")
     bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
     vector_energy: str | None = Field(title="Nom du vecteur énergétique", description="Description optionnelle du vecteur énergétique.", default=None)
-    vector_kind: Literal["electrical", "fuel"] = Field(
-        title="Type de vecteur énergétique",
-        description="Catégorie du vecteur énergétique spécifique au stockage.",
-        default="fuel",
-        json_schema_extra={
-            "repr_type": "RadioItems",
-            "repr_kwargs": {
-                "options_labels": {"electrical": "Electrique", "fuel": "Combustible"}
-            },
-        },
-    )
-    vector_params: EnergyVectorParams | None = Field(
+    vector_params: EnergyVectorParams = Field(
         title="Paramètres spécifiques - Combustibe",
         description="Déclarer des paramètres spécifiques, pouvoir calorifique inférieur et densité.",
-        default=None,
-        json_schema_extra={"repr_kwargs": {"visible": ("vector_kind", "==", "fuel")}},
+        default_factory=EnergyVectorParams,
     )
-    initial_level_fuel: InitialStorageLevelFuel | None = Field(
+    initial_level_fuel: InitialStorageLevelFuel = Field(
         title="Etat initial du stockage - Combustible",
-        description="Déclarer un état initial (énergie/masse/volume).",
-        default=None,
-        json_schema_extra={"repr_kwargs": {"visible": ("vector_kind", "==", "fuel")}},
-    )
-    initial_level_electrical: InitialStorageLevelElectrical | None = Field(
-        title="Etat initial du stockage - Electrique",
-        description="Déclarer un état initial (énergie).",
-        default=None,
-        json_schema_extra={"repr_kwargs": {"visible": ("vector_kind", "==", "electrical")}},
+        description="Etat initial (énergie/masse/volume). Mettre 0 pour démarrer vide.",
+        default_factory=InitialStorageLevelFuel,
     )
 
-    @model_validator(mode="after")
-    def check_initial_level_consistency(self):
-        if self.vector_kind == "fuel":
-            if self.initial_level_fuel is None:
-                raise ValueError("Le niveau initial combustible est requis.")
-        elif self.vector_kind == "electrical":
-            if self.initial_level_electrical is None:
-                raise ValueError("Le niveau initial électrique est requis.")
-        return self
+class StorageGeneric(BaseModel):
+    """
+    Stockage - Générique / Electrique (sans PCI)
+    """
+    id: str = Field(title="Nom", description="Nom/identifiant du stockage d'énergie.")
+    bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
+    vector_energy: str | None = Field(title="Nom du vecteur énergétique", description="Description optionnelle du vecteur énergétique.", default=None)
+    initial_level_electrical: InitialStorageLevelElectrical = Field(
+        title="Etat initial du stockage - Electrique",
+        description="Etat initial (énergie). Mettre 0 pour démarrer vide.",
+        default_factory=InitialStorageLevelElectrical,
+    )
 
 
 class ConstantProfile(BaseModel):
@@ -301,11 +306,34 @@ class FileProfile(BaseModel):
     Profil chargé depuis un fichier CSV
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
-    file: str = Field(title="Nom du CSV", description="Chemin d'accès complet (absolut) du fichier CSV d'entrée.")
+    file: str = Field(
+        title=r"Nom du CSV (e.g. 'C:\\Users\\...\\data.csv')",
+        description="Chemin d'acces complet (absolu) du fichier CSV d'entree.",
+    )
     column: str | None = Field(title="Entête de la colonne contenant les valeurs", description="Si le champ est laisé vide, la première colonne est utilisée.", default=None)
     unit: str = Field(title="Unité du profil", description="Unité des valeurs de la colonne du fichier CSV.")
-    sep: str | None = Field(title="Caractère séparateur de colonne", description="Si le champ est laisé vide, une autodétéction est executée.", default=None)
-    decimal: Literal[".", ","] = Field(title="Caractère séparateur de décimal", description="Si le champ est laisé vide, une autodétéction est executée.", default=".")
+    sep: Literal["auto", ",", ";", "\t"] = Field(
+        title="Caractère séparateur de colonne",
+        description="Par défaut une autodétéction est executée.",
+        default="auto",
+        json_schema_extra={
+            "repr_type": "SegmentedControl",
+            "repr_kwargs": {
+                "options_labels": {"auto": "Auto", ",": "Virgule", ";": "Point-virgule", "\t": "Tabulation"},
+            },
+        },
+    )
+    decimal: Literal[".", ","] = Field(
+        title="Caractère séparateur de décimal",
+        description="Par défaut le point est utilisé.",
+        default=".",
+        json_schema_extra={
+            "repr_type": "SegmentedControl",
+            "repr_kwargs": {
+                "options_labels": {".": "Point", ",": "Virgule"},
+            },
+        },
+    )
 
 # ---- Horaire CGN, profils inputs
 CRUISES_NAME = Literal['Translemanique', 'Petit-Lac - Grand-Lac', 'Lavaux - Haut-Lac', 'Lavaux - Haut-Lac - Grand-Lac']

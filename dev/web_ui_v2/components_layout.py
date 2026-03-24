@@ -16,6 +16,7 @@ def build_layout():
             [
                 html.H2("CGN - Interface bateau (V2)"),
                 dcc.Interval(id="v2m-refresh", interval=300, n_intervals=0, max_intervals=1),
+                dcc.Store(id="v2db-rev", data=0),
                 dcc.Store(id="v2m-form-seed", data={}),
                 dcc.Store(id="v2m-pending-save", data={}),
                 dcc.Store(id="v2cfg-current", data={"name": "config_local", "components": []}),
@@ -170,6 +171,7 @@ def build_layout():
                                 html.Div(
                                     [
                                         html.Button("Charger, Editer le formulaire", id="v2m-load-edit", n_clicks=0),
+                                        html.Button("Rafraichir", id="v2db-refresh", n_clicks=0, style={"marginLeft": "8px"}),
                                         html.Button("Supprimer", id="v2m-delete", n_clicks=0, style={"marginLeft": "8px"}),
                                     ],
                                     style={"marginTop": "8px", "marginBottom": "8px"},
