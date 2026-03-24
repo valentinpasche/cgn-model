@@ -128,11 +128,17 @@ def fields_repr(model_key: str | None, seed: dict[str, Any] | None = None) -> di
         }
     if model_key == "profile.nav_speed":
         cruise_name = None
+        select_mode = "cruise"
         if isinstance(seed, dict):
             cruise_name = seed.get("cruise_name")
-        return {
-            "course_no": fields.Select(data=_course_options_for_cruise(str(cruise_name) if cruise_name else None))
-        }
+            select_mode = str(seed.get("select", "cruise"))
+        # Important: en mode "cruise", on ne surcharge pas le field_repr.
+        # Sinon l'override peut neutraliser la règle `visible` définie dans le modèle.
+        if select_mode == "course":
+            return {
+                "course_no": fields.Select(data=_course_options_for_cruise(str(cruise_name) if cruise_name else None))
+            }
+        return {}
     return {}
 
 
