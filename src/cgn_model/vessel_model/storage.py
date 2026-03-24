@@ -10,7 +10,7 @@ from typing import Any
 from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
-from cgn_model.vessel_model.utils import pci_to_j_per_kg, pci_to_j_per_m3
+from cgn_model.vessel_model.utils import level_to_j, pci_to_j_per_kg, pci_to_j_per_m3
 
 type FArray = NDArray[np.floating]
 
@@ -45,6 +45,8 @@ class StorageResult:
     e_cum_J: FArray
     e_pos_J: FArray
     e_neg_J: FArray
+    e_stock_J: FArray
+    initial_level_J: float = 0.0
 
     # Métadonnée optionnelle
     vector: str | None = None
@@ -55,6 +57,9 @@ class StorageResult:
     v_cum_m3: FArray | None = None
     v_dot_l_per_s: FArray | None = None
     v_cum_l: FArray | None = None
+    m_stock_kg: FArray | None = None
+    v_stock_m3: FArray | None = None
+    v_stock_l: FArray | None = None
 
     @property
     def N(self) -> int:
@@ -81,6 +86,7 @@ class StorageResult:
         dt: float,
         vector: str | None = None,
         vector_params: dict[str, Any] | None = None,
+        initial_level: dict[str, Any] | None = None,
     ) -> "StorageResult":
         """
         Construit le tally à partir du signal net_w d'un bus et du pas dt.
@@ -97,6 +103,7 @@ class StorageResult:
         e_cum_J  = np.cumsum(p) * float(dt)
         e_pos_J  = np.cumsum(p_pos_W) * float(dt)
         e_neg_J  = np.cumsum(p_neg_W) * float(dt)
+        initial_level_j = 0.0
 
         m_dot_kg_per_s: FArray | None = None
         m_cum_kg: FArray | None = None
@@ -104,6 +111,9 @@ class StorageResult:
         v_cum_m3: FArray | None = None
         v_dot_l_per_s: FArray | None = None
         v_cum_l: FArray | None = None
+        m_stock_kg: FArray | None = None
+        v_stock_m3: FArray | None = None
+        v_stock_l: FArray | None = None
 
         vp = vector_params if isinstance(vector_params, dict) else {}
         basis = vp.get("pci_basis")
@@ -111,6 +121,8 @@ class StorageResult:
         density = vp.get("density_kg_m3")
         pci_mass_unit = vp.get("pci_mass_unit")
         pci_volume_unit = vp.get("pci_volume_unit")
+        pci_j_per_kg: float | None = None
+        pci_j_per_m3: float | None = None
 
         if basis == "mass" and pci_value is not None and pci_mass_unit is not None:
             pci_j_per_kg = pci_to_j_per_kg(float(pci_value), str(pci_mass_unit))
@@ -134,11 +146,40 @@ class StorageResult:
                 m_dot_kg_per_s = v_dot_m3_per_s * float(density)
                 m_cum_kg = np.cumsum(m_dot_kg_per_s) * float(dt)
 
+        if isinstance(initial_level, dict):
+            raw_value = initial_level.get("value")
+            raw_unit = initial_level.get("unit")
+            if raw_value is not None and raw_unit is not None:
+                initial_level_j = level_to_j(
+                    value=float(raw_value),
+                    unit=str(raw_unit),  # type: ignore[arg-type]
+                    pci_j_per_kg=pci_j_per_kg,
+                    pci_j_per_m3=pci_j_per_m3,
+                    density_kg_m3=float(density) if density is not None else None,
+                )
+
+        e_stock_J = initial_level_j + e_cum_J
+        if pci_j_per_kg is not None:
+            m_stock_kg = e_stock_J / pci_j_per_kg
+        elif pci_j_per_m3 is not None and density is not None and float(density) > 0:
+            v_tmp = e_stock_J / pci_j_per_m3
+            m_stock_kg = v_tmp * float(density)
+
+        if pci_j_per_m3 is not None:
+            v_stock_m3 = e_stock_J / pci_j_per_m3
+            v_stock_l = v_stock_m3 * 1_000.0
+        elif pci_j_per_kg is not None and density is not None and float(density) > 0:
+            m_tmp = e_stock_J / pci_j_per_kg
+            v_stock_m3 = m_tmp / float(density)
+            v_stock_l = v_stock_m3 * 1_000.0
+
         return cls(
             id=id, bus=bus_id, dt=float(dt),
             t_s=t_s,
             p_W=p, p_pos_W=p_pos_W, p_neg_W=p_neg_W,
             e_cum_J=e_cum_J, e_pos_J=e_pos_J, e_neg_J=e_neg_J,
+            e_stock_J=e_stock_J,
+            initial_level_J=initial_level_j,
             vector=vector,
             vector_params=vector_params,
             m_dot_kg_per_s=m_dot_kg_per_s,
@@ -147,6 +188,9 @@ class StorageResult:
             v_cum_m3=v_cum_m3,
             v_dot_l_per_s=v_dot_l_per_s,
             v_cum_l=v_cum_l,
+            m_stock_kg=m_stock_kg,
+            v_stock_m3=v_stock_m3,
+            v_stock_l=v_stock_l,
         )
 
     def to_dataframe(self):
@@ -164,6 +208,7 @@ class StorageResult:
             "e_cum_J": self.e_cum_J,
             "e_pos_J": self.e_pos_J,
             "e_neg_J": self.e_neg_J,
+            "e_stock_J": self.e_stock_J,
         }
         if self.m_dot_kg_per_s is not None:
             data["m_dot_kg_per_s"] = self.m_dot_kg_per_s
@@ -177,6 +222,12 @@ class StorageResult:
             data["v_dot_l_per_s"] = self.v_dot_l_per_s
         if self.v_cum_l is not None:
             data["v_cum_l"] = self.v_cum_l
+        if self.m_stock_kg is not None:
+            data["m_stock_kg"] = self.m_stock_kg
+        if self.v_stock_m3 is not None:
+            data["v_stock_m3"] = self.v_stock_m3
+        if self.v_stock_l is not None:
+            data["v_stock_l"] = self.v_stock_l
         return pd.DataFrame(data)
 
     # --- résumé structuré (dict) ---
@@ -207,6 +258,8 @@ class StorageResult:
             "net_mass_kg": float(self.m_cum_kg[-1]) if self.m_cum_kg is not None else 0.0,
             "net_volume_m3": float(self.v_cum_m3[-1]) if self.v_cum_m3 is not None else 0.0,
             "net_volume_l": float(self.v_cum_l[-1]) if self.v_cum_l is not None else 0.0,
+            "initial_level_kWh": float(self.initial_level_J) / 3_600_000.0,
+            "final_level_kWh": float(self.e_stock_J[-1]) / 3_600_000.0 if self.e_stock_J.size else float(self.initial_level_J) / 3_600_000.0,
         }
     
     # --- propriété “jolie” (texte) ---

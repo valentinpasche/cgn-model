@@ -1026,6 +1026,12 @@ class Vessel:
                 if vector_params is not None and hasattr(vector_params, "model_dump")
                 else None
             )
+            initial_level = getattr(scfg, "initial_level", None)
+            initial_level_dict = (
+                initial_level.model_dump(exclude_none=True)
+                if initial_level is not None and hasattr(initial_level, "model_dump")
+                else None
+            )
 
             res = StorageResult.from_bus(
                 id=scfg.id,
@@ -1034,6 +1040,7 @@ class Vessel:
                 dt=self.dt,
                 vector=vector_name,  # juste mémorisé, pas utilisé par le tally générique
                 vector_params=vector_params_dict,
+                initial_level=initial_level_dict,
             )
             results[scfg.id] = res
 
@@ -1428,7 +1435,6 @@ converters:
     
     
     
-
 
 
 

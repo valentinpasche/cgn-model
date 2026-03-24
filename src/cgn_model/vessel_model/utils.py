@@ -10,6 +10,11 @@ type PCI_Massic_Unit = Literal["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"]
 
 # Volumiques : Énergie par volume (Liquides / Gaz)
 type PCI_Volumic_Unit = Literal["kWh/l", "kWh/m3", "MJ/m3", "kJ/m3", "J/m3"]
+type StorageLevelUnit = Literal[
+    "J", "kJ", "MJ", "Wh", "kWh", "MWh",
+    "kg", "t",
+    "m3", "l",
+]
 
 
 _MASSIC_TO_J_PER_KG: dict[str, float] = {
@@ -44,3 +49,66 @@ def pci_to_j_per_m3(value: float, unit: PCI_Volumic_Unit) -> float:
     if out <= 0:
         raise ValueError("pci_to_j_per_m3: PCI doit etre > 0.")
     return out
+
+
+def energy_to_j(value: float, unit: StorageLevelUnit) -> float:
+    """
+    Convertit une énergie en Joules.
+    """
+    factors = {
+        "J": 1.0,
+        "kJ": 1_000.0,
+        "MJ": 1_000_000.0,
+        "Wh": 3_600.0,
+        "kWh": 3_600_000.0,
+        "MWh": 3_600_000_000.0,
+    }
+    key = str(unit)
+    if key not in factors:
+        raise ValueError(f"energy_to_j: unité non énergétique: {unit!r}")
+    return float(value) * factors[key]
+
+
+def level_to_j(
+    *,
+    value: float,
+    unit: StorageLevelUnit,
+    pci_j_per_kg: float | None = None,
+    pci_j_per_m3: float | None = None,
+    density_kg_m3: float | None = None,
+) -> float:
+    """
+    Convertit un niveau initial (énergie/masse/volume) vers Joules.
+
+    Règles:
+    - unité énergie: conversion directe;
+    - masse (kg/t): nécessite pci_j_per_kg, ou pci_j_per_m3 + density;
+    - volume (m3/l): nécessite pci_j_per_m3, ou pci_j_per_kg + density.
+    """
+    v = float(value)
+    u = str(unit)
+    if v < 0:
+        raise ValueError("level_to_j: la valeur initiale doit être >= 0.")
+
+    if u in {"J", "kJ", "MJ", "Wh", "kWh", "MWh"}:
+        return energy_to_j(v, unit)
+
+    if u in {"kg", "t"}:
+        m_kg = v if u == "kg" else v * 1_000.0
+        if pci_j_per_kg is not None:
+            return m_kg * float(pci_j_per_kg)
+        if pci_j_per_m3 is not None and density_kg_m3 is not None and float(density_kg_m3) > 0:
+            v_m3 = m_kg / float(density_kg_m3)
+            return v_m3 * float(pci_j_per_m3)
+        raise ValueError("level_to_j: unité masse fournie mais PCI/densité insuffisants.")
+
+    if u in {"m3", "l"}:
+        v_m3 = v if u == "m3" else v / 1_000.0
+        if pci_j_per_m3 is not None:
+            return v_m3 * float(pci_j_per_m3)
+        if pci_j_per_kg is not None and density_kg_m3 is not None and float(density_kg_m3) > 0:
+            m_kg = v_m3 * float(density_kg_m3)
+            return m_kg * float(pci_j_per_kg)
+        raise ValueError("level_to_j: unité volume fournie mais PCI/densité insuffisants.")
+
+    raise ValueError(f"level_to_j: unité non supportée: {unit!r}")

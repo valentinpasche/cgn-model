@@ -248,6 +248,12 @@ Champs :
   - pci_volume_unit (str) : requis si pci_basis="volume"
     - "kWh/l" | "kWh/m3" | "MJ/m3" | "kJ/m3" | "J/m3"
   - density_kg_m3 (float, optionnel) : densite pour calculer aussi l'autre grandeur
+- initial_level (dict | null) : niveau initial du stockage (optionnel)
+  - value (float, >= 0)
+  - unit (str)
+    - energie : "J" | "kJ" | "MJ" | "Wh" | "kWh" | "MWh"
+    - masse : "kg" | "t"
+    - volume : "m3" | "l"
 
 Regles de validation :
 - si pci_basis="mass" :
@@ -258,12 +264,15 @@ Regles de validation :
   - pci_mass_unit interdit
 - sans pci_basis :
   - ne pas renseigner pci_value/pci_mass_unit/pci_volume_unit
+- si initial_level est en masse/volume :
+  - vector_params doit permettre la conversion vers energie (PCI requis)
+  - conversion croisee masse<->volume necessite density_kg_m3 > 0
 
 Compatibilite de nommage :
 - `vector_energy` est le champ recommande.
 - les alias suivants sont acceptes en lecture YAML : `vector_name`, `vector`, `vecteur`.
 
-Exemple :
+Exemple (diesel, niveau initial en litres) :
 ```yaml
 storages:
   - id: "fuel_tank"
@@ -274,6 +283,9 @@ storages:
       pci_value: 11.86
       pci_mass_unit: "kWh/kg"
       density_kg_m3: 840.0
+    initial_level:
+      value: 1000
+      unit: "l"
 ```
 
 Exemple (base volumique) :
@@ -286,6 +298,17 @@ storages:
       pci_basis: "volume"
       pci_value: 3.0
       pci_volume_unit: "kWh/m3"
+```
+
+Exemple (stockage electrique, niveau initial en kWh) :
+```yaml
+storages:
+  - id: "battery_pack"
+    bus: "Electrical:main"
+    vector_energy: "battery"
+    initial_level:
+      value: 32
+      unit: "kWh"
 ```
 
 ## Kinds disponibles
