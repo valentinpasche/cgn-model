@@ -26,6 +26,7 @@ dependencies:
   - dash
   - plotly # dépendence de dash
   - dash-extensions
+  - dash-pydantic-form
 
   # # --- Dev & docs (optional but recommended) ---
   - pytest
