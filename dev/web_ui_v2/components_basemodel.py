@@ -177,6 +177,7 @@ class EnergyVectorParams(BaseModel):
             },
         },
     )
+    density_kg_m3: float | None = Field(title="Densité en kilo par mètre cube", ge=0, default=None, repr_kwargs={"suffix": " kg/m³"})
     pci_mass: Quantity | None = Field(
         title="PCI massique - Valeur et unité",
         default=None,
@@ -197,7 +198,6 @@ class EnergyVectorParams(BaseModel):
             **default_repr_kwargs,
         },
     )
-    density_kg_m3: float | None = Field(title="Densité en kilo par mètre cube", ge=0, default=None, repr_kwargs={"suffix": " kg/m³"})
 
     @model_validator(mode="after")
     def check_active_pci_field(self):
@@ -210,20 +210,74 @@ class EnergyVectorParams(BaseModel):
                 raise ValueError("PCI volumique requis quand le type PCI est 'Volumique'.")
         return self
 
+class InitialStorageLevelFuel(BaseModel):
+    value: Quantity = Field(
+        title="Niveau initial - Combustible",
+        default_factory=lambda: Quantity(value=1000.0, unit="dm^3"),
+        repr_type="Quantity",
+        repr_kwargs={
+            "unit_options": {"kg": "kg", "Mg": "t", "dm^3": "l", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
+            **default_repr_kwargs,
+        },
+    )
+
+class InitialStorageLevelElectrical(BaseModel):
+    value: Quantity = Field(
+        title="Niveau initial - Electrique",
+        default_factory=lambda: Quantity(value=32.0, unit="kWh"),
+        repr_type="Quantity",
+        repr_kwargs={
+            "unit_options": ["kWh", "Wh", "MWh", "J", "kJ", "MJ"],
+            **default_repr_kwargs,
+        },
+    )
+
 class StorageGeneric(BaseModel):
     """
     Stockage d'énergie générique (combustible/autre)
     """
     id: str = Field(title="Nom", description="Nom/identifiant du stockage d'énergie.")
     bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
-    vector_energy: str | None = Field(title="Nom du vecteur énergétique", description="Description optionnelle du vecteur énergétique", default=None)
-    has_parameters: bool = Field(title="Paramètres spécifiques au vecteur énergétique", description="Définition des paramètres")
+    vector_energy: str | None = Field(title="Nom du vecteur énergétique", description="Description optionnelle du vecteur énergétique.", default=None)
+    vector_kind: Literal["electrical", "fuel"] = Field(
+        title="Type de vecteur énergétique",
+        description="Catégorie du vecteur énergétique spécifique au stockage.",
+        default="fuel",
+        json_schema_extra={
+            "repr_type": "RadioItems",
+            "repr_kwargs": {
+                "options_labels": {"electrical": "Electrique", "fuel": "Combustible"}
+            },
+        },
+    )
     vector_params: EnergyVectorParams | None = Field(
-        title="Paramètres du vecteur énergétique",
+        title="Paramètres spécifiques - Combustibe",
         description="Déclarer des paramètres spécifiques, pouvoir calorifique inférieur et densité.",
         default=None,
-        json_schema_extra={"repr_kwargs": {"visible": ("has_parameters", "==", True)}},
+        json_schema_extra={"repr_kwargs": {"visible": ("vector_kind", "==", "fuel")}},
     )
+    initial_level_fuel: InitialStorageLevelFuel | None = Field(
+        title="Etat initial du stockage - Combustible",
+        description="Déclarer un état initial (énergie/masse/volume).",
+        default=None,
+        json_schema_extra={"repr_kwargs": {"visible": ("vector_kind", "==", "fuel")}},
+    )
+    initial_level_electrical: InitialStorageLevelElectrical | None = Field(
+        title="Etat initial du stockage - Electrique",
+        description="Déclarer un état initial (énergie).",
+        default=None,
+        json_schema_extra={"repr_kwargs": {"visible": ("vector_kind", "==", "electrical")}},
+    )
+
+    @model_validator(mode="after")
+    def check_initial_level_consistency(self):
+        if self.vector_kind == "fuel":
+            if self.initial_level_fuel is None:
+                raise ValueError("Le niveau initial combustible est requis.")
+        elif self.vector_kind == "electrical":
+            if self.initial_level_electrical is None:
+                raise ValueError("Le niveau initial électrique est requis.")
+        return self
 
 
 class ConstantProfile(BaseModel):
@@ -289,6 +343,7 @@ class NavParams(BaseModel):
     )
     v_croisiere: Quantity = Field(
         title="Vitesse de croisière (strictement positive)",
+        description="Vitesse maximum du bateau (profil MRUA).",
         default_factory=lambda: Quantity(value=7.0, unit="m/s"),
         repr_type="Quantity",
         repr_kwargs={
@@ -297,11 +352,17 @@ class NavParams(BaseModel):
             **default_repr_kwargs,
         },
     )
-    allow_delay: bool = Field(
-        title="Autorise le retard sur l'horaire",
-        description="Autoriser ou non de rattraper le retard, si le bateau à de l'avance sur l'horaire.",
-        default=True,
-        repr_kwargs={"disabled": True},
+    allow_delay: Literal["yes", "no"] = Field(
+        title="Autoriser le rattrapage du retard",
+        description="Si 'Oui', le profil peut rattraper un retard sur l'horaire cible.",
+        default="yes",
+        json_schema_extra={
+            "repr_type": "SegmentedControl",
+            "repr_kwargs": {
+                "options_labels": {"yes": "Oui", "no": "Non"},
+                "disabled": True,
+            },
+        },
     )
 
     @model_validator(mode="after")

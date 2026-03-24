@@ -233,7 +233,7 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
                 "acc": _q(params_raw.get("acc"), "m*s^-2"),
                 "dec": _q(params_raw.get("dec"), "m*s^-2"),
                 "v_croisiere": _q(params_raw.get("v_croisiere"), "m/s"),
-                "allow_delay": bool(params_raw.get("allow_delay", True)),
+                "allow_delay": str(params_raw.get("allow_delay", "yes")) == "yes",
             },
         }
     elif model_key == "converter.constant_eta":
@@ -286,6 +286,7 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "params": {"coeffs": raw["coeffs"]},
         }
     elif model_key == "storage.generic":
+        vector_kind = str(raw.get("vector_kind", "fuel"))
         vector_params = raw.get("vector_params")
         if isinstance(vector_params, dict):
             basis = str(vector_params.get("pci_basis", "none"))
@@ -331,14 +332,35 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
                         vector_params = None
                 else:
                     vector_params = None
-        has_parameters = bool(raw.get("has_parameters", False))
+        else:
+            vector_params = None
+
+        if vector_kind != "fuel":
+            vector_params = None
+
+        initial_level_payload = None
+        if bool(raw.get("has_initial_level", False)):
+            q = None
+            if vector_kind == "electrical":
+                il_e = raw.get("initial_level_electrical")
+                if isinstance(il_e, dict):
+                    q = il_e.get("value")
+            else:
+                il_f = raw.get("initial_level_fuel")
+                if isinstance(il_f, dict):
+                    q = il_f.get("value")
+            if isinstance(q, dict) and q.get("value") is not None and q.get("unit") is not None:
+                initial_level_payload = {"value": q.get("value"), "unit": q.get("unit")}
+
         component = {
             "id": raw["id"],
             "kind": kind,
             # Champ visible mais auto-genere cote UI, conserve ici pour compat mode debug.
             "bus": raw.get("bus"),
             "vector_energy": raw.get("vector_energy"),
-            "vector_params": vector_params if has_parameters else None,
+            "vector_kind": vector_kind,
+            "vector_params": vector_params,
+            "initial_level": initial_level_payload,
         }
     else:
         raise ValueError(f"Modele non supporte: {model_key}")
@@ -387,7 +409,7 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
                 "acc": {"value": params.get("acc", 0.5), "unit": "m*s^-2"},
                 "dec": {"value": params.get("dec", 0.5), "unit": "m*s^-2"},
                 "v_croisiere": {"value": params.get("v_croisiere", 7.0), "unit": "m/s"},
-                "allow_delay": bool(params.get("allow_delay", True)),
+                "allow_delay": "yes" if bool(params.get("allow_delay", True)) else "no",
             },
         }
         return key, seed
@@ -432,6 +454,7 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
         }
     if key == "storage.generic":
         vp = c.get("vector_params")
+        vector_kind = str(c.get("vector_kind", "fuel"))
         basis = "none"
         pci_mass = None
         pci_volume = None
@@ -448,11 +471,23 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
                 unit = vp.get("pci_volume_unit")
                 if pci_value is not None and unit:
                     pci_volume = {"value": pci_value, "unit": unit}
+
+        il = c.get("initial_level")
+        has_initial_level = isinstance(il, dict) and il.get("value") is not None and il.get("unit") is not None
+        initial_level_fuel = None
+        initial_level_electrical = None
+        if has_initial_level:
+            value = il.get("value")
+            unit = il.get("unit")
+            if vector_kind == "electrical":
+                initial_level_electrical = {"value": {"value": value, "unit": unit}}
+            else:
+                initial_level_fuel = {"value": {"value": value, "unit": unit}}
         return key, {
             "id": c.get("id", ""),
             "bus": c.get("bus", "auto-genere"),
             "vector_energy": c.get("vector_energy"),
-            "has_parameters": vp is not None,
+            "vector_kind": vector_kind,
             "vector_params": {
                 "pci_basis": basis,
                 "pci_mass": pci_mass,
@@ -464,6 +499,9 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
                 "pci_volume": None,
                 "density_kg_m3": None,
             },
+            "has_initial_level": bool(has_initial_level),
+            "initial_level_fuel": initial_level_fuel,
+            "initial_level_electrical": initial_level_electrical,
         }
     return None, {}
 
