@@ -68,3 +68,6 @@ storages:
   - id: "battery_pack"
     bus: "electric"
     vector_energy: "electrical"
+    initial_level:
+      value: 5000
+      unit: kWh

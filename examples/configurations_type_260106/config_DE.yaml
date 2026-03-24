@@ -84,10 +84,14 @@ converters:
       eta_source: "eta_from_speed"
 
 storages:
-  - id: "fuel_tank"
-    bus: "fuel"
-    vector_energy: "diesel"
+  - id: fuel_tank
+    bus: fuel
+    vector_energy: diesel
     vector_params:
-      pci_basis: "volume"
+      pci_basis: volume
       pci_value: 9.8
-      pci_volume_unit: "kWh/l"
+      pci_volume_unit: kWh/l
+      density_kg_m3: 840
+    initial_level:
+      value: 2500
+      unit: l
