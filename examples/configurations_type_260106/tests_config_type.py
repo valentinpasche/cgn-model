@@ -35,7 +35,7 @@ if __name__ == "__main__":
     # df_de["fuel_cum_m3"] = df_de["fuel_tank_e_cum_J"] / pci_mazout
     
     # ---- 2) Vapeur
-    df_steam, units_steam = process("config_steam.yaml", draw_dag=True)
+    df_steam, units_steam = process("config_steam.yaml", draw_dag=False)
     # df_steam["fuel_cum_m3"] = df_steam["fuel_tank_e_cum_J"] / pci_mazout
     
     # ---- 3) Full-electrique
