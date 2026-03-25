@@ -179,15 +179,18 @@ class EnergyVectorParams(BaseModel):
     )
     density_kg_m3: float = Field(
         title="Densité en kilo par mètre cube (obligatoire)",
-        gt=0,
+        gt=0.01,
         default=850.0,
-        repr_kwargs={"suffix": " kg/m³"},
+        repr_kwargs={"suffix": " kg/m³",
+        **default_repr_kwargs,
+        },
     )
     pci_mass: Quantity | None = Field(
         title="PCI massique - Valeur et unité",
         default_factory=lambda: Quantity(value=42.6, unit="MJ/kg"),
         repr_type="Quantity",
         repr_kwargs={
+            "min": 0.01,
             "unit_options": ["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"],
             "visible": ("pci_basis", "==", "mass"),
             **default_repr_kwargs,
@@ -198,6 +201,7 @@ class EnergyVectorParams(BaseModel):
         default_factory=lambda: Quantity(value=10.06, unit="kWh/dm^3"),
         repr_type="Quantity",
         repr_kwargs={
+            "min": 0.01,
             "unit_options": {"kWh/dm^3": "kWh/l", "kWh/m^3": "kWh/m³", "MJ/m^3": "MJ/m³", "kJ/m^3": "kJ/m³", "J/m^3": "J/m³"},
             "visible": ("pci_basis", "==", "volume"),
             **default_repr_kwargs,
@@ -225,6 +229,7 @@ class InitialStorageLevelFuel(BaseModel):
         default_factory=lambda: Quantity(value=0.0, unit="dm^3"),
         repr_type="Quantity",
         repr_kwargs={
+            "min": 0.0,
             "unit_options": {"kg": "kg", "Mg": "tonne", "dm^3": "litre", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
             **default_repr_kwargs,
         },
@@ -242,6 +247,7 @@ class InitialStorageLevelElectrical(BaseModel):
         default_factory=lambda: Quantity(value=0.0, unit="kWh"),
         repr_type="Quantity",
         repr_kwargs={
+            "min": 0.0,
             "unit_options": ["kWh", "Wh", "MWh", "J", "kJ", "MJ"],
             **default_repr_kwargs,
         },
