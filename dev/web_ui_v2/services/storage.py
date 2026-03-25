@@ -266,3 +266,9 @@ def upsert_schema(name: str, schema: dict[str, Any]) -> int:
             schema_id = int(row["id"])
         conn.commit()
         return schema_id
+
+
+def delete_schema(schema_id: int) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM brick_schemas_v2 WHERE id = ?", (int(schema_id),))
+        conn.commit()

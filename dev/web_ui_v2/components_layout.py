@@ -19,7 +19,7 @@ def build_layout():
                 dcc.Store(id="v2db-rev", data=0),
                 dcc.Store(id="v2m-form-seed", data={}),
                 dcc.Store(id="v2m-pending-save", data={}),
-                dcc.Store(id="v2cfg-current", data={"name": "config_local", "components": []}),
+                dcc.Store(id="v2s-current", data={"name": "schema_local", "components": []}),
                 dmc.Modal(
                     id="v2m-update-modal",
                     title="Confirmation mise a jour",
@@ -50,82 +50,61 @@ def build_layout():
                         ),
                     ],
                 ),
-                html.H3("Configuration complete", style={"fontSize": "1.45rem", "marginBottom": "6px"}),
+                html.H3("Schemas (DB)", style={"fontSize": "1.45rem", "marginBottom": "6px"}),
                 html.Div(
                     [
                         html.Div(
                             [
                                 html.Div(
                                     [
-                                        dcc.Dropdown(
-                                            id="v2cfg-select",
-                                            options=[],
-                                            placeholder="Charger une configuration (DB)",
-                                            style={"flex": "1 1 auto", "minWidth": "260px"},
-                                        ),
-                                        html.Div(
-                                            [
-                                                html.Button("Charger", id="v2cfg-load", n_clicks=0),
-                                                html.Button("Sauvegarder", id="v2cfg-save", n_clicks=0, style={"marginLeft": "8px"}),
-                                                html.Button("Valider", id="v2cfg-validate", n_clicks=0, style={"marginLeft": "8px"}),
-                                            ],
-                                            style={"display": "flex", "alignItems": "center", "flex": "0 0 auto", "marginLeft": "8px"},
-                                        ),
+                                        dcc.Input(id="v2s-name", type="text", value="schema_local", style={"flex": "1 1 auto", "minWidth": "180px"}),
+                                        dcc.Dropdown(id="v2s-select", options=[], placeholder="Schema en base", style={"flex": "1 1 auto", "minWidth": "220px", "marginLeft": "8px"}),
+                                        html.Button("Charger", id="v2s-load", n_clicks=0, style={"marginLeft": "8px"}),
+                                        html.Button("Sauvegarder", id="v2s-save", n_clicks=0, style={"marginLeft": "8px"}),
+                                        html.Button("Supprimer", id="v2s-delete", n_clicks=0, style={"marginLeft": "8px"}),
+                                        html.Button("Valider", id="v2s-validate", n_clicks=0, style={"marginLeft": "8px"}),
                                     ],
                                     style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
                                 ),
                                 html.Div(
-                                    id="v2cfg-save-choice",
-                                    style={"display": "none", "marginBottom": "8px", "padding": "8px", "border": "1px solid #ddd", "borderRadius": "8px"},
-                                    children=[
-                                        html.Div(
-                                            [
-                                                dcc.Input(id="v2cfg-save-name", type="text", value="config_local", style={"flex": "1 1 auto", "minWidth": "180px"}),
-                                                html.Button("Sauvegarder DB", id="v2cfg-save-db", n_clicks=0, style={"marginLeft": "8px"}),
-                                                html.Button("Annuler", id="v2cfg-save-cancel", n_clicks=0, style={"marginLeft": "8px"}),
-                                            ],
-                                            style={"display": "flex", "alignItems": "center", "width": "100%"},
-                                        )
-                                    ],
-                                ),
-                                html.Div(
                                     [
                                         dcc.Dropdown(
-                                            id="v2cfg-add-component",
+                                            id="v2s-add-component",
                                             options=[],
                                             placeholder="Ajouter un composant (DB)",
                                             style={"flex": "1 1 auto", "minWidth": "220px"},
                                         ),
-                                        html.Button("Ajouter", id="v2cfg-add-btn", n_clicks=0, style={"marginLeft": "8px", "flex": "0 0 130px"}),
+                                        html.Button("Ajouter", id="v2s-add-btn", n_clicks=0, style={"marginLeft": "8px", "flex": "0 0 130px"}),
                                     ],
                                     style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
                                 ),
                                 html.Div(
                                     [
                                         dcc.Dropdown(
-                                            id="v2cfg-remove-component",
+                                            id="v2s-remove-component",
                                             options=[],
-                                            placeholder="Supprimer un composant",
+                                            placeholder="Supprimer un composant du schema",
                                             style={"flex": "1 1 auto", "minWidth": "220px"},
                                         ),
-                                        html.Button("Supprimer", id="v2cfg-remove-btn", n_clicks=0, style={"marginLeft": "8px", "flex": "0 0 130px"}),
+                                        html.Button("Supprimer", id="v2s-remove-btn", n_clicks=0, style={"marginLeft": "8px", "flex": "0 0 130px"}),
                                     ],
                                     style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
                                 ),
+                                html.Div(id="v2s-status"),
                             ],
                             style={"width": "49%", "border": "1px solid #e5e5e5", "borderRadius": "8px", "padding": "10px", "display": "flex", "flexDirection": "column"},
                         ),
                         html.Div(
                             [
-                                html.Div(id="v2cfg-status", style={"marginBottom": "8px"}),
                                 dash_table.DataTable(
-                                    id="v2cfg-table",
+                                    id="v2s-table",
                                     columns=[
-                                        {"name": "Nom config", "id": "name"},
-                                        {"name": "Nb composants", "id": "n_components"},
+                                        {"name": "Composant", "id": "id"},
+                                        {"name": "Statut", "id": "status"},
+                                        {"name": "Modele", "id": "model"},
                                     ],
                                     data=[],
-                                    page_size=6,
+                                    page_size=8,
                                     style_table={"overflowX": "auto"},
                                 ),
                             ],
@@ -134,7 +113,7 @@ def build_layout():
                     ],
                     style={"display": "flex", "gap": "2%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "marginBottom": "10px"},
                 ),
-                html.H3("Visualisation de la configuration", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
+                html.H3("Visualisation du schema", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                 html.Div(
                     [
                         html.Div(
@@ -154,7 +133,7 @@ def build_layout():
                             [
                                 Mermaid(
                                     id="v2cfg-mermaid",
-                                    chart='flowchart LR\n  n0["Visualisation DAG en cours de finalisation"]\n  n1["Placeholder"]\n  n0 --> n1',
+                                    chart='flowchart LR\n  n0["Visualisation schema en cours"]\n  n1["Placeholder"]\n  n0 --> n1',
                                 )
                             ],
                             style={"minHeight": "360px"},
@@ -179,7 +158,7 @@ def build_layout():
                                 html.Label("Type de composant"),
                                 dcc.Dropdown(id="v2m-type", options=TYPE_OPTIONS, value="profile", clearable=False),
                                 html.Div(style={"height": "8px"}),
-                                html.Label("Modèle de composant"),
+                                html.Label("Modele de composant"),
                                 dcc.Dropdown(id="v2m-model", options=model_options("profile"), value=default_key, clearable=False),
                                 html.Div(style={"height": "10px"}),
                                 html.Div(id="v2m-form-container", children=render_form(default_key, {})),
@@ -210,3 +189,4 @@ def build_layout():
             style={"margin": "16px"},
         )
     )
+
