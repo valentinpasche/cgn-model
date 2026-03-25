@@ -58,7 +58,12 @@ class VariableEtaConverter(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant du convertisseur de puissance.")
     from_bus: str | None = Field(title="Entrée puissance", default=None, description="Nom du composant en amont.")
-    to_bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
+    to_bus: str | None = Field(
+        title="Sortie puissance",
+        description="Nom du composant en aval.",
+        default="auto-généré",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
     eta_source: str = Field(title="Profil de rendement, (0 < eta <= 1)", description="Nom/identifiant du profil de rendement source.")
 
 
@@ -79,7 +84,12 @@ class ConstantEtaConverter(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant du convertisseur de puissance.")
     from_bus: str | None = Field(title="Entrée puissance", default=None, description="Nom du composant en amont.")
-    to_bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
+    to_bus: str | None = Field(
+        title="Sortie puissance",
+        description="Nom du composant en aval.",
+        default="auto-généré",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
     eta: float = Field(title="Rendement, (0 < eta <= 1)", gt=0, le=1, allow_inf_nan=False, description="Valeur numérique entre 0 et 1.")
 
 
@@ -181,30 +191,32 @@ class EnergyVectorParams(BaseModel):
         title="Densité en kilo par mètre cube (obligatoire)",
         gt=0.01,
         default=850.0,
-        repr_kwargs={"suffix": " kg/m³",
-        **default_repr_kwargs,
-        },
+        json_schema_extra={"repr_kwargs": {"suffix": " kg/m³", **default_repr_kwargs}},
     )
     pci_mass: Quantity | None = Field(
         title="PCI massique - Valeur et unité",
         default_factory=lambda: Quantity(value=42.6, unit="MJ/kg"),
-        repr_type="Quantity",
-        repr_kwargs={
-            "min": 0.01,
-            "unit_options": ["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"],
-            "visible": ("pci_basis", "==", "mass"),
-            **default_repr_kwargs,
+        json_schema_extra={
+            "repr_type": "Quantity",
+            "repr_kwargs": {
+                "unit_options": ["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"],
+                "min": 0.01,
+                "visible": ("pci_basis", "==", "mass"),
+                **default_repr_kwargs,
+            },
         },
     )
     pci_volume: Quantity | None = Field(
         title="PCI volumique - Valeur et unité",
         default_factory=lambda: Quantity(value=10.06, unit="kWh/dm^3"),
-        repr_type="Quantity",
-        repr_kwargs={
-            "min": 0.01,
-            "unit_options": {"kWh/dm^3": "kWh/l", "kWh/m^3": "kWh/m³", "MJ/m^3": "MJ/m³", "kJ/m^3": "kJ/m³", "J/m^3": "J/m³"},
-            "visible": ("pci_basis", "==", "volume"),
-            **default_repr_kwargs,
+        json_schema_extra={
+            "repr_type": "Quantity",
+            "repr_kwargs": {
+                "unit_options": {"kWh/dm^3": "kWh/l", "kWh/m^3": "kWh/m³", "MJ/m^3": "MJ/m³", "kJ/m^3": "kJ/m³", "J/m^3": "J/m³"},
+                "min": 0.01,
+                "visible": ("pci_basis", "==", "volume"),
+                **default_repr_kwargs,
+            },
         },
     )
 
@@ -227,11 +239,13 @@ class InitialStorageLevelFuel(BaseModel):
     value: Quantity = Field(
         title="Niveau initial - Combustible",
         default_factory=lambda: Quantity(value=0.0, unit="dm^3"),
-        repr_type="Quantity",
-        repr_kwargs={
-            "min": 0.0,
-            "unit_options": {"kg": "kg", "Mg": "tonne", "dm^3": "litre", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
-            **default_repr_kwargs,
+        json_schema_extra={
+            "repr_type": "Quantity",
+            "repr_kwargs": {
+                "unit_options": {"kg": "kg", "Mg": "tonne", "dm^3": "litre", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
+                "min": 0.0,
+                **default_repr_kwargs,
+            },
         },
     )
 
@@ -245,11 +259,13 @@ class InitialStorageLevelElectrical(BaseModel):
     value: Quantity = Field(
         title="Niveau initial - Electrique",
         default_factory=lambda: Quantity(value=0.0, unit="kWh"),
-        repr_type="Quantity",
-        repr_kwargs={
-            "min": 0.0,
-            "unit_options": ["kWh", "Wh", "MWh", "J", "kJ", "MJ"],
-            **default_repr_kwargs,
+        json_schema_extra={
+            "repr_type": "Quantity",
+            "repr_kwargs": {
+                "unit_options": ["kWh", "Wh", "MWh", "J", "kJ", "MJ"],
+                "min": 0.0,
+                **default_repr_kwargs,
+            },
         },
     )
 
@@ -264,7 +280,12 @@ class StorageFuel(BaseModel):
     Stockage - Combustible (avec PCI)
     """
     id: str = Field(title="Nom", description="Nom/identifiant du stockage d'énergie.")
-    bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
+    bus: str | None = Field(
+        title="Sortie puissance",
+        description="Nom du composant en aval.",
+        default="auto-généré",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
     vector_energy: str | None = Field(title="Nom du vecteur énergétique", description="Description optionnelle du vecteur énergétique.", default=None)
     vector_params: EnergyVectorParams = Field(
         title="Paramètres spécifiques - Combustibe",
@@ -282,12 +303,51 @@ class StorageGeneric(BaseModel):
     Stockage - Générique / Electrique (sans PCI)
     """
     id: str = Field(title="Nom", description="Nom/identifiant du stockage d'énergie.")
-    bus: str | None = Field(title="Sortie puissance", description="Nom du composant en aval.", default="auto-généré", repr_kwargs={"disabled": True})
+    bus: str | None = Field(
+        title="Sortie puissance",
+        description="Nom du composant en aval.",
+        default="auto-généré",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
     vector_energy: str | None = Field(title="Nom du vecteur énergétique", description="Description optionnelle du vecteur énergétique.", default=None)
     initial_level_electrical: InitialStorageLevelElectrical = Field(
-        title="Etat initial du stockage - Electrique",
+        title="Etat initial du stockage - Electrique (énergie)",
         description="Etat initial (énergie). Mettre 0 pour démarrer vide.",
         default_factory=InitialStorageLevelElectrical,
+    )
+
+
+class SchemaComponentRef(BaseModel):
+    """
+    Ligne composant dans un schema UI.
+    """
+
+    name: str = Field(title="Nom du composant", description="Nom/ID du composant en base.")
+    status: str = Field(
+        title="Statut",
+        description="Statut d'existance en base.",
+        default="N/A",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
+    model: str = Field(
+        title="Modele",
+        description="Modele detecte (type.kind).",
+        default="N/A",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
+
+
+class SchemaDraft(BaseModel):
+    """
+    Schema (liste de references composants).
+    """
+
+    name: str = Field(title="Nom du schema", description="Nom unique du schema.")
+    components: list[SchemaComponentRef] = Field(
+        title="Composants du schema",
+        description="Table des composants. Utiliser 'Add row' pour ajouter des lignes.",
+        min_length=1,
+        default_factory=list,
     )
 
 
@@ -358,32 +418,38 @@ class NavParams(BaseModel):
     acc: Quantity = Field(
         title="Accélération (strictement positive)",
         default_factory=lambda: Quantity(value=0.5, unit="m*s^-2"),
-        repr_type="Quantity",
-        repr_kwargs={
-            "unit_options": {"m*s^-2": "m/s²"},
-            "min": 0.01,
-            **default_repr_kwargs,
+        json_schema_extra={
+            "repr_type": "Quantity",
+            "repr_kwargs": {
+                "unit_options": {"m*s^-2": "m/s²"},
+                "min": 0.01,
+                **default_repr_kwargs,
+            },
         },
     )
     dec: Quantity = Field(
         title="Décélération (strictement positive)",
         default_factory=lambda: Quantity(value=0.5, unit="m*s^-2"),
-        repr_type="Quantity",
-        repr_kwargs={
-            "unit_options": {"m*s^-2": "m/s²"},
-            "min": 0.01,
-            **default_repr_kwargs,
+        json_schema_extra={
+            "repr_type": "Quantity",
+            "repr_kwargs": {
+                "unit_options": {"m*s^-2": "m/s²"},
+                "min": 0.01,
+                **default_repr_kwargs,
+            },
         },
     )
     v_croisiere: Quantity = Field(
         title="Vitesse de croisière (strictement positive)",
         description="Vitesse maximum du bateau (profil MRUA).",
         default_factory=lambda: Quantity(value=7.0, unit="m/s"),
-        repr_type="Quantity",
-        repr_kwargs={
-            "unit_options": ["m/s", "km/h", "kn"],
-            "min": 0.01,
-            **default_repr_kwargs,
+        json_schema_extra={
+            "repr_type": "Quantity",
+            "repr_kwargs": {
+                "unit_options": ["m/s", "km/h", "kn"],
+                "min": 0.01,
+                **default_repr_kwargs,
+            },
         },
     )
     allow_delay: Literal["yes", "no"] = Field(
@@ -431,9 +497,7 @@ class NavSpeedProfile(BaseModel):
         title="Numéro de la course CGN - Haute saison 2025",
         description="Séléction du numéro de la 'Course CGN' à simuler.",
         default=None,
-        repr_kwargs={
-            "visible": ("select", "==", "course"),
-        },
+        json_schema_extra={"repr_kwargs": {"visible": ("select", "==", "course")}},
     )
     # unit: str = "m/s"
     # source: str = "all"

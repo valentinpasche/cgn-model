@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import dash_mantine_components as dmc
-from dash import dash_table, dcc, html
+from dash import dcc, html
 from dash_extensions import Mermaid
 
-from components_registry import TYPE_OPTIONS, model_options, render_form
+from components_registry import TYPE_OPTIONS, model_options, render_form, render_schema_form
 
 
 def build_layout():
@@ -19,7 +19,8 @@ def build_layout():
                 dcc.Store(id="v2db-rev", data=0),
                 dcc.Store(id="v2m-form-seed", data={}),
                 dcc.Store(id="v2m-pending-save", data={}),
-                dcc.Store(id="v2s-current", data={"name": "schema_local", "components": []}),
+                dcc.Store(id="v2s-pending-save", data={}),
+                dcc.Store(id="v2s-current", data={"name": "", "components": []}),
                 dmc.Modal(
                     id="v2m-update-modal",
                     title="Confirmation mise a jour",
@@ -50,6 +51,36 @@ def build_layout():
                         ),
                     ],
                 ),
+                dmc.Modal(
+                    id="v2s-update-modal",
+                    title="Confirmation mise a jour",
+                    opened=False,
+                    children=[
+                        html.P("Ce nom de schema existe deja. Voulez-vous le mettre a jour ?"),
+                        html.Div(
+                            [
+                                html.Button("Oui, mettre a jour", id="v2s-update-yes", n_clicks=0),
+                                html.Button("Annuler", id="v2s-update-no", n_clicks=0, style={"marginLeft": "8px"}),
+                            ],
+                            style={"marginTop": "8px"},
+                        ),
+                    ],
+                ),
+                dmc.Modal(
+                    id="v2s-delete-modal",
+                    title="Confirmation suppression",
+                    opened=False,
+                    children=[
+                        html.P("Voulez-vous vraiment supprimer ce schema ?"),
+                        html.Div(
+                            [
+                                html.Button("Oui, supprimer", id="v2s-delete-yes", n_clicks=0),
+                                html.Button("Annuler", id="v2s-delete-no", n_clicks=0, style={"marginLeft": "8px"}),
+                            ],
+                            style={"marginTop": "8px"},
+                        ),
+                    ],
+                ),
                 html.H3("Schemas (DB)", style={"fontSize": "1.45rem", "marginBottom": "6px"}),
                 html.Div(
                     [
@@ -57,61 +88,32 @@ def build_layout():
                             [
                                 html.Div(
                                     [
-                                        dcc.Input(id="v2s-name", type="text", value="schema_local", style={"flex": "1 1 auto", "minWidth": "180px"}),
-                                        dcc.Dropdown(id="v2s-select", options=[], placeholder="Schema en base", style={"flex": "1 1 auto", "minWidth": "220px", "marginLeft": "8px"}),
-                                        html.Button("Charger", id="v2s-load", n_clicks=0, style={"marginLeft": "8px"}),
-                                        html.Button("Sauvegarder", id="v2s-save", n_clicks=0, style={"marginLeft": "8px"}),
+                                        dcc.Dropdown(id="v2s-select", options=[], placeholder="Selectionner un schema en base", style={"flex": "1 1 auto", "minWidth": "220px"}),
+                                    ],
+                                    style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
+                                ),
+                                html.Div(
+                                    [
+                                        html.Button("Charger, Editer le schema", id="v2s-load", n_clicks=0),
+                                        html.Button("Rafraichir", id="v2s-refresh", n_clicks=0, style={"marginLeft": "8px"}),
                                         html.Button("Supprimer", id="v2s-delete", n_clicks=0, style={"marginLeft": "8px"}),
-                                        html.Button("Valider", id="v2s-validate", n_clicks=0, style={"marginLeft": "8px"}),
                                     ],
-                                    style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
+                                    style={"marginBottom": "8px"},
                                 ),
+                                html.Div(id="v2s-form-container", children=render_schema_form({"name": "", "components": []})),
                                 html.Div(
                                     [
-                                        dcc.Dropdown(
-                                            id="v2s-add-component",
-                                            options=[],
-                                            placeholder="Ajouter un composant (DB)",
-                                            style={"flex": "1 1 auto", "minWidth": "220px"},
-                                        ),
-                                        html.Button("Ajouter", id="v2s-add-btn", n_clicks=0, style={"marginLeft": "8px", "flex": "0 0 130px"}),
+                                        html.Button("Valider", id="v2s-validate", n_clicks=0),
+                                        html.Button("Sauvegarder", id="v2s-save", n_clicks=0, style={"marginLeft": "8px"}),
                                     ],
-                                    style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
+                                    style={"marginTop": "10px"},
                                 ),
-                                html.Div(
-                                    [
-                                        dcc.Dropdown(
-                                            id="v2s-remove-component",
-                                            options=[],
-                                            placeholder="Supprimer un composant du schema",
-                                            style={"flex": "1 1 auto", "minWidth": "220px"},
-                                        ),
-                                        html.Button("Supprimer", id="v2s-remove-btn", n_clicks=0, style={"marginLeft": "8px", "flex": "0 0 130px"}),
-                                    ],
-                                    style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
-                                ),
-                                html.Div(id="v2s-status"),
+                                html.Div(id="v2s-status", style={"marginTop": "8px"}),
                             ],
-                            style={"width": "49%", "border": "1px solid #e5e5e5", "borderRadius": "8px", "padding": "10px", "display": "flex", "flexDirection": "column"},
-                        ),
-                        html.Div(
-                            [
-                                dash_table.DataTable(
-                                    id="v2s-table",
-                                    columns=[
-                                        {"name": "Composant", "id": "id"},
-                                        {"name": "Statut", "id": "status"},
-                                        {"name": "Modele", "id": "model"},
-                                    ],
-                                    data=[],
-                                    page_size=8,
-                                    style_table={"overflowX": "auto"},
-                                ),
-                            ],
-                            style={"width": "49%", "border": "1px solid #e5e5e5", "borderRadius": "8px", "padding": "10px"},
+                            style={"width": "100%", "border": "1px solid #e5e5e5", "borderRadius": "8px", "padding": "10px", "display": "flex", "flexDirection": "column"},
                         ),
                     ],
-                    style={"display": "flex", "gap": "2%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "marginBottom": "10px"},
+                    style={"display": "flex", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "marginBottom": "10px"},
                 ),
                 html.H3("Visualisation du schema", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                 html.Div(
@@ -169,15 +171,6 @@ def build_layout():
                                     ],
                                     style={"marginTop": "10px"},
                                 ),
-                                html.Div(
-                                    id="v2m-save-choice",
-                                    style={"display": "none", "marginTop": "8px", "padding": "8px", "border": "1px solid #ddd", "borderRadius": "8px"},
-                                    children=[
-                                        html.Span("Sauvegarder en: "),
-                                        html.Button("DB", id="v2m-save-db", n_clicks=0, style={"marginLeft": "8px"}),
-                                        html.Button("Annuler", id="v2m-save-cancel", n_clicks=0, style={"marginLeft": "8px"}),
-                                    ],
-                                ),
                                 html.Div(id="v2m-status", style={"marginTop": "8px"}),
                             ],
                             style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
@@ -189,4 +182,3 @@ def build_layout():
             style={"margin": "16px"},
         )
     )
-

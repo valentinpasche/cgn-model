@@ -16,6 +16,7 @@ from components_basemodel import (
     FileProfile,
     ForceAndSpeedToPowerAdapter,
     NavSpeedProfile,
+    SchemaDraft,
     SeriesProfile,
     StorageFuel,
     StorageGeneric,
@@ -35,6 +36,8 @@ TYPE_OPTIONS = [
 
 AIO_ID = "v2m-form"
 FORM_ID = "main"
+SCHEMA_AIO_ID = "v2s-form"
+SCHEMA_FORM_ID = "main"
 
 MODEL_SPECS: dict[str, dict[str, Any]] = {
     "profile.nav_speed": {
@@ -160,6 +163,38 @@ def render_form(model_key: str | None, seed: dict[str, Any] | None):
             safe_seed = {k: v for k, v in seed.items() if k in model_cls.model_fields}
             item = model_cls.model_construct(**safe_seed)
     return ModelForm(item, AIO_ID, FORM_ID, debounce=200, form_cols=10, fields_repr=fields_repr(model_key, seed))
+
+
+def render_schema_form(seed: dict[str, Any] | None):
+    item: Any = SchemaDraft
+    safe_seed = seed if isinstance(seed, dict) else {}
+    if safe_seed:
+        try:
+            item = SchemaDraft.model_validate(safe_seed)
+        except Exception:  # noqa: BLE001
+            safe = {k: v for k, v in safe_seed.items() if k in SchemaDraft.model_fields}
+            item = SchemaDraft.model_construct(**safe)
+    return ModelForm(
+        item,
+        SCHEMA_AIO_ID,
+        SCHEMA_FORM_ID,
+        debounce=200,
+        form_cols=12,
+        fields_repr={
+            "components": fields.Table(
+                fields_order=["name", "status", "model"],
+                auto_add_rows=True,
+                table_height=300,
+                with_upload=False,
+                with_download=False,
+                with_clipboard=False,
+                column_defs_overrides={
+                    "status": {"editable": False},
+                    "model": {"editable": False},
+                },
+            )
+        },
+    )
 
 
 def validate_form_data(model_key: str, form_data: dict[str, Any]) -> dict[str, Any]:

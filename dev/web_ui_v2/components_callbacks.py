@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from dash import Input, Output, State, ctx, html, no_update
+from dash import Input, Output, State, html, no_update
 from dash_pydantic_form import ModelForm
 from pydantic import ValidationError
 
@@ -14,11 +14,14 @@ from components_basemodel import COURSES_NUMBER
 from components_registry import (
     AIO_ID,
     FORM_ID,
+    SCHEMA_AIO_ID,
+    SCHEMA_FORM_ID,
     db_rows,
     default_model_key,
     model_options,
     payload_from_data,
     render_form,
+    render_schema_form,
     seed_from_template,
     validate_form_data,
 )
@@ -45,7 +48,6 @@ def _schema_components_list(schema_like: dict[str, Any] | None) -> list[str]:
                 name = str(item.get("name", "") or item.get("id", "")).strip()
                 if name:
                     out.append(name)
-    # remove duplicates preserving order
     uniq: list[str] = []
     seen: set[str] = set()
     for n in out:
@@ -55,20 +57,16 @@ def _schema_components_list(schema_like: dict[str, Any] | None) -> list[str]:
     return uniq
 
 
-def _schema_payload(name: str, components: list[str]) -> dict[str, Any]:
-    return {"name": name, "components": components}
-
-
 def _catalog() -> dict[str, dict[str, Any]]:
     return {str(r.get("name", "")): r for r in db_rows() if str(r.get("name", "")).strip()}
 
 
-def _schema_table_rows(schema_components: list[str], catalog: dict[str, dict[str, Any]]) -> list[dict[str, str]]:
+def _schema_store(name: str, component_names: list[str], catalog: dict[str, dict[str, Any]]) -> dict[str, Any]:
     rows: list[dict[str, str]] = []
-    for comp_id in schema_components:
+    for comp_id in component_names:
         item = catalog.get(comp_id)
         if item is None:
-            rows.append({"id": comp_id, "status": "INCONNU", "model": "NA"})
+            rows.append({"name": comp_id, "status": "N/A", "model": "N/A"})
             continue
         model = f"{item.get('component_type', '')}.{item.get('kind', '')}"
         t = get_template_by_name(comp_id)
@@ -76,8 +74,14 @@ def _schema_table_rows(schema_components: list[str], catalog: dict[str, dict[str
             mk, _ = seed_from_template(str(t.get("component_type", "")), str(t.get("kind", "")), t.get("payload", {}))
             if mk:
                 model = mk
-        rows.append({"id": comp_id, "status": "OK", "model": model})
-    return rows
+        rows.append({"name": comp_id, "status": "OK", "model": model})
+    return {"name": name, "components": rows}
+
+
+def _schema_db_payload(schema_store: dict[str, Any]) -> dict[str, Any]:
+    name = str(schema_store.get("name", "")).strip()
+    comps = _schema_components_list(schema_store)
+    return {"name": name, "components": comps}
 
 
 def _schema_edges(schema_components: list[str]) -> list[tuple[str, str]]:
@@ -173,6 +177,34 @@ def _validate_schema(schema_components: list[str], catalog: dict[str, dict[str, 
     return "Validation OK: schema coherent."
 
 
+def _check_schema_save_constraints(schema_store: dict[str, Any]) -> tuple[bool, str]:
+    comps = _schema_components_list(schema_store)
+    if not comps:
+        return False, "Sauvegarde refusee: au moins 1 composant est requis."
+
+    catalog = _catalog()
+    missing = [c for c in comps if c not in catalog]
+    if missing:
+        return False, f"Sauvegarde refusee: composants absents de la DB -> {', '.join(missing)}"
+
+    validation_msg = _validate_schema(comps, catalog)
+    if not validation_msg.startswith("Validation OK"):
+        return False, f"Sauvegarde refusee: {validation_msg}"
+    return True, "OK"
+
+
+def _check_schema_constraints_for_validate(schema_store: dict[str, Any]) -> tuple[bool, str]:
+    comps = _schema_components_list(schema_store)
+    if not comps:
+        return False, "Validation echec: schema vide."
+    catalog = _catalog()
+    missing = [c for c in comps if c not in catalog]
+    if missing:
+        return False, f"Validation echec: composants manquants -> {', '.join(missing)}"
+    msg = _validate_schema(comps, catalog)
+    return (msg.startswith("Validation OK"), msg)
+
+
 def register_callbacks(app):
     def _next_rev(rev: int | None) -> int:
         return int(rev or 0) + 1
@@ -180,75 +212,54 @@ def register_callbacks(app):
     @app.callback(
         Output("v2db-rev", "data"),
         Input("v2db-refresh", "n_clicks"),
+        Input("v2s-refresh", "n_clicks"),
         State("v2db-rev", "data"),
         prevent_initial_call=True,
     )
-    def manual_refresh(_: int, rev: int | None):
+    def manual_refresh(_: int, __: int, rev: int | None):
         return _next_rev(rev)
 
     @app.callback(
-        Output("v2s-name", "value"),
+        Output("v2s-form-container", "children"),
         Input("v2s-current", "data"),
     )
-    def schema_name_reflect(current_schema: dict[str, Any] | None):
-        current = current_schema if isinstance(current_schema, dict) else {}
-        return str(current.get("name", "schema_local"))
+    def render_schema_form_cb(current_schema: dict[str, Any] | None):
+        safe = current_schema if isinstance(current_schema, dict) else {"name": "", "components": []}
+        # Keep key stable while editing only the schema name to avoid visual refresh of table/form.
+        key = json.dumps({"components": _schema_components_list(safe)}, ensure_ascii=False, sort_keys=True, default=str)
+        return html.Div(render_schema_form(safe), key=key)
 
     @app.callback(
-        Output("v2s-add-component", "options"),
-        Output("v2s-remove-component", "options"),
+        Output("v2s-current", "data"),
+        Output("v2s-status", "children"),
+        Input(ModelForm.ids.main(SCHEMA_AIO_ID, SCHEMA_FORM_ID), "data"),
+        State("v2s-current", "data"),
+        prevent_initial_call=True,
+    )
+    def schema_form_to_store(form_data: dict[str, Any] | None, current_schema: dict[str, Any] | None):
+        if not isinstance(form_data, dict):
+            return no_update, no_update
+        current = current_schema if isinstance(current_schema, dict) else {"name": "", "components": []}
+        name = str(form_data.get("name", current.get("name", ""))).strip()
+        comps = _schema_components_list(form_data)
+        store = _schema_store(name, comps, _catalog())
+        if store == current:
+            return no_update, no_update
+        return store, no_update
+
+    @app.callback(
         Output("v2s-select", "options"),
-        Output("v2s-table", "data"),
         Output("v2cfg-mermaid", "chart"),
         Input("v2m-refresh", "n_intervals"),
         Input("v2db-rev", "data"),
         Input("v2s-current", "data"),
     )
     def schema_refresh(_: int, __: int, current_schema: dict[str, Any] | None):
-        catalog = _catalog()
-        current = current_schema if isinstance(current_schema, dict) else {"name": "schema_local", "components": []}
-        comps = _schema_components_list(current)
-        add_opts = [{"label": n, "value": n} for n in sorted(catalog.keys())]
-        rem_opts = [{"label": n, "value": n} for n in comps]
         schema_opts = [{"label": str(r.get("name", "")), "value": str(r.get("name", ""))} for r in list_schemas() if str(r.get("name", "")).strip()]
-        table_rows = _schema_table_rows(comps, catalog)
-        mermaid = _schema_to_mermaid(comps, catalog)
-        return add_opts, rem_opts, schema_opts, table_rows, mermaid
-
-    @app.callback(
-        Output("v2s-current", "data"),
-        Output("v2s-status", "children"),
-        Input("v2s-add-btn", "n_clicks"),
-        State("v2s-add-component", "value"),
-        State("v2s-current", "data"),
-        prevent_initial_call=True,
-    )
-    def schema_add_component(_: int, comp_name: str | None, current_schema: dict[str, Any] | None):
-        if not comp_name:
-            return no_update, "Selectionne un composant a ajouter."
         current = current_schema if isinstance(current_schema, dict) else {"name": "schema_local", "components": []}
-        name = str(current.get("name", "schema_local"))
         comps = _schema_components_list(current)
-        if comp_name in comps:
-            return no_update, f"Le composant '{comp_name}' est deja dans le schema."
-        comps.append(str(comp_name))
-        return _schema_payload(name, comps), f"Composant ajoute: {comp_name}"
-
-    @app.callback(
-        Output("v2s-current", "data", allow_duplicate=True),
-        Output("v2s-status", "children", allow_duplicate=True),
-        Input("v2s-remove-btn", "n_clicks"),
-        State("v2s-remove-component", "value"),
-        State("v2s-current", "data"),
-        prevent_initial_call=True,
-    )
-    def schema_remove_component(_: int, comp_name: str | None, current_schema: dict[str, Any] | None):
-        if not comp_name:
-            return no_update, "Selectionne un composant a supprimer."
-        current = current_schema if isinstance(current_schema, dict) else {"name": "schema_local", "components": []}
-        name = str(current.get("name", "schema_local"))
-        comps = [c for c in _schema_components_list(current) if c != str(comp_name)]
-        return _schema_payload(name, comps), f"Composant supprime: {comp_name}"
+        mermaid = _schema_to_mermaid(comps, _catalog())
+        return schema_opts, mermaid
 
     @app.callback(
         Output("v2s-current", "data", allow_duplicate=True),
@@ -263,42 +274,105 @@ def register_callbacks(app):
         row = next((r for r in list_schemas() if str(r.get("name", "")) == str(selected)), None)
         schema = row.get("schema", {}) if isinstance(row, dict) else {}
         comps = _schema_components_list(schema if isinstance(schema, dict) else {})
-        return _schema_payload(str(selected), comps), f"Schema charge: {selected}"
+        return _schema_store(str(selected), comps, _catalog()), f"Schema charge: {selected}"
 
     @app.callback(
         Output("v2s-current", "data", allow_duplicate=True),
         Output("v2s-status", "children", allow_duplicate=True),
+        Output("v2s-pending-save", "data"),
+        Output("v2s-update-modal", "opened"),
         Output("v2db-rev", "data", allow_duplicate=True),
         Input("v2s-save", "n_clicks"),
         State("v2s-current", "data"),
-        State("v2s-name", "value"),
         State("v2db-rev", "data"),
         prevent_initial_call=True,
     )
-    def schema_save(_: int, current_schema: dict[str, Any] | None, save_name: str | None, rev: int | None):
-        current = current_schema if isinstance(current_schema, dict) else {"name": "schema_local", "components": []}
-        name = str(save_name or current.get("name", "schema_local")).strip() or "schema_local"
-        comps = _schema_components_list(current)
-        payload = _schema_payload(name, comps)
+    def schema_save(_: int, current_schema: dict[str, Any] | None, rev: int | None):
+        current = current_schema if isinstance(current_schema, dict) else {"name": "", "components": []}
+        schema_name = str(current.get("name", "")).strip()
+        if not schema_name:
+            return no_update, "Sauvegarde refusee: nom du schema requis.", {}, False, no_update
+        ok, msg = _check_schema_save_constraints(current)
+        if not ok:
+            return no_update, msg, {}, False, no_update
+        payload = _schema_db_payload(current)
+        name = str(payload.get("name", ""))
+        exists = any(str(r.get("name", "")) == name for r in list_schemas())
+        if exists:
+            return no_update, f"Le nom '{name}' existe deja. Confirmation requise.", payload, True, no_update
         upsert_schema(name, payload)
-        return payload, f"Schema sauvegarde en DB: {name}", _next_rev(rev)
+        refreshed = _schema_store(name, _schema_components_list(payload), _catalog())
+        return refreshed, f"Schema sauvegarde en DB: {name}", {}, False, _next_rev(rev)
+
+    @app.callback(
+        Output("v2s-current", "data", allow_duplicate=True),
+        Output("v2s-status", "children", allow_duplicate=True),
+        Output("v2s-pending-save", "data", allow_duplicate=True),
+        Output("v2s-update-modal", "opened", allow_duplicate=True),
+        Output("v2db-rev", "data", allow_duplicate=True),
+        Input("v2s-update-yes", "n_clicks"),
+        State("v2s-pending-save", "data"),
+        State("v2db-rev", "data"),
+        prevent_initial_call=True,
+    )
+    def schema_confirm_update(_: int, pending: dict[str, Any] | None, rev: int | None):
+        if not isinstance(pending, dict) or not pending:
+            return no_update, "Aucune mise a jour en attente.", {}, False, no_update
+        if not str(pending.get("name", "")).strip():
+            return no_update, "Sauvegarde refusee: nom du schema requis.", {}, False, no_update
+        ok, msg = _check_schema_save_constraints(pending)
+        if not ok:
+            return no_update, msg, {}, False, no_update
+        name = str(pending.get("name", ""))
+        upsert_schema(name, pending)
+        refreshed = _schema_store(name, _schema_components_list(pending), _catalog())
+        return refreshed, f"Schema mis a jour en DB: {name}", {}, False, _next_rev(rev)
+
+    @app.callback(
+        Output("v2s-update-modal", "opened", allow_duplicate=True),
+        Input("v2s-update-no", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def schema_cancel_update(_: int):
+        return False
+
+    @app.callback(
+        Output("v2s-delete-modal", "opened"),
+        Output("v2s-status", "children", allow_duplicate=True),
+        Input("v2s-delete", "n_clicks"),
+        State("v2s-select", "value"),
+        prevent_initial_call=True,
+    )
+    def schema_request_delete(_: int, selected: str | None):
+        if not selected:
+            return False, "Selectionne un schema a supprimer."
+        return True, "Confirmation suppression ouverte."
 
     @app.callback(
         Output("v2s-status", "children", allow_duplicate=True),
+        Output("v2s-delete-modal", "opened", allow_duplicate=True),
         Output("v2db-rev", "data", allow_duplicate=True),
-        Input("v2s-delete", "n_clicks"),
+        Input("v2s-delete-yes", "n_clicks"),
         State("v2s-select", "value"),
         State("v2db-rev", "data"),
         prevent_initial_call=True,
     )
-    def schema_delete(_: int, selected: str | None, rev: int | None):
+    def schema_confirm_delete(_: int, selected: str | None, rev: int | None):
         if not selected:
-            return "Selectionne un schema a supprimer.", no_update
+            return "Selectionne un schema a supprimer.", False, no_update
         row = next((r for r in list_schemas() if str(r.get("name", "")) == str(selected)), None)
         if not isinstance(row, dict):
-            return "Schema introuvable.", no_update
+            return "Schema introuvable.", False, no_update
         delete_schema(int(row["id"]))
-        return f"Schema supprime: {selected}", _next_rev(rev)
+        return f"Schema supprime: {selected}", False, _next_rev(rev)
+
+    @app.callback(
+        Output("v2s-delete-modal", "opened", allow_duplicate=True),
+        Input("v2s-delete-no", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def schema_cancel_delete(_: int):
+        return False
 
     @app.callback(
         Output("v2s-status", "children", allow_duplicate=True),
@@ -307,9 +381,16 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def schema_validate(_: int, current_schema: dict[str, Any] | None):
-        current = current_schema if isinstance(current_schema, dict) else {"name": "schema_local", "components": []}
-        comps = _schema_components_list(current)
-        return _validate_schema(comps, _catalog())
+        current = current_schema if isinstance(current_schema, dict) else {"name": "", "components": []}
+        ok, msg = _check_schema_constraints_for_validate(current)
+        if not ok:
+            return msg
+        name = str(current.get("name", "")).strip()
+        if not name:
+            return "Validation echec: nom du schema requis."
+        if any(str(r.get("name", "")) == name for r in list_schemas()):
+            return f"Attention: le nom '{name}' existe deja."
+        return "Validation OK: schema coherent."
 
     @app.callback(
         Output("v2m-select", "options"),
@@ -443,23 +524,11 @@ def register_callbacks(app):
             return f"Erreur: {exc}"
 
     @app.callback(
-        Output("v2m-save-choice", "style"),
-        Input("v2m-save", "n_clicks"),
-        Input("v2m-save-cancel", "n_clicks"),
-        Input("v2m-save-db", "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def toggle_save_choice(_: int, __: int, ___: int):
-        if ctx.triggered_id == "v2m-save":
-            return {"display": "block", "marginTop": "8px", "padding": "8px", "border": "1px solid #ddd", "borderRadius": "8px"}
-        return {"display": "none", "marginTop": "8px", "padding": "8px", "border": "1px solid #ddd", "borderRadius": "8px"}
-
-    @app.callback(
         Output("v2m-status", "children", allow_duplicate=True),
         Output("v2m-pending-save", "data"),
         Output("v2m-update-modal", "opened"),
         Output("v2db-rev", "data", allow_duplicate=True),
-        Input("v2m-save-db", "n_clicks"),
+        Input("v2m-save", "n_clicks"),
         State("v2m-model", "value"),
         State(ModelForm.ids.main(AIO_ID, FORM_ID), "data"),
         State("v2db-rev", "data"),
