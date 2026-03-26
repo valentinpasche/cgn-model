@@ -1,5 +1,9 @@
 * text=auto
 
+# Normaliser l'encodage des fichiers texte
+*.py working-tree-encoding=UTF-8
+*.md working-tree-encoding=UTF-8
+
 # Normaliser les fins de lignes des fichiers texte
 *.py  text eol=lf
 *.txt text eol=lf
