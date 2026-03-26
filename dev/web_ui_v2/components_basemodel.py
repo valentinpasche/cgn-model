@@ -115,7 +115,11 @@ class PowerToPowerPolyAdapter(BaseModel):
     source: str = Field(title="Profil source", description="Nom du profil de puissance en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en entrée", default="W")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
+    unit_out: Literal["W","kW", "MW", "GW"] = Field(
+        title="Unité de puissance, en sortie",
+        default="W",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
     coeffs: list[float] = Field(
         title="Coefficients polynomiaux (ordre croissant)",
         min_length=2,
@@ -147,7 +151,11 @@ class SpeedToPowerPolyAdapter(BaseModel):
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
+    unit_out: Literal["W","kW", "MW", "GW"] = Field(
+        title="Unité de puissance, en sortie",
+        default="W",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
     coeffs: list[float] = Field(
         title="Coefficients polynomiaux (ordre croissant)",
         min_length=1,
@@ -221,7 +229,11 @@ class ForceAndSpeedToPowerAdapter(BaseModel):
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     force_unit_in: Literal["N", "kN", "MN"] = Field(title="Unité de force, en entrée", default="N")
     speed_unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
+    unit_out: Literal["W","kW", "MW", "GW"] = Field(
+        title="Unité de puissance, en sortie",
+        default="W",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
     
 
 class SpeedToForcePoly(BaseModel):
