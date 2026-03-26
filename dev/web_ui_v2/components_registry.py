@@ -61,6 +61,26 @@ MODEL_SPECS: dict[str, dict[str, Any]] = {
         "kind": "series",
         "model": SeriesProfile,
     },
+    "adapter.power_to_power_poly": {
+        "component_type": "adapter",
+        "kind": "power_to_power_poly",
+        "model": PowerToPowerPolyAdapter,
+    },
+    "adapter.speed_to_power_poly": {
+        "component_type": "adapter",
+        "kind": "speed_to_power_poly",
+        "model": SpeedToPowerPolyAdapter,
+    },
+    "adapter.speed_to_force_poly": {
+        "component_type": "adapter",
+        "kind": "speed_to_force_poly",
+        "model": SpeedToForcePoly,
+    },
+    "adapter.force_and_speed_to_power": {
+        "component_type": "adapter",
+        "kind": "force_and_speed_to_power",
+        "model": ForceAndSpeedToPowerAdapter,
+    },
     "converter.constant_eta": {
         "component_type": "converter",
         "kind": "constant_eta",
@@ -70,26 +90,6 @@ MODEL_SPECS: dict[str, dict[str, Any]] = {
         "component_type": "converter",
         "kind": "variable_eta",
         "model": VariableEtaConverter,
-    },
-    "adapter.speed_to_power_poly": {
-        "component_type": "adapter",
-        "kind": "speed_to_power_poly",
-        "model": SpeedToPowerPolyAdapter,
-    },
-    "adapter.force_and_speed_to_power": {
-        "component_type": "adapter",
-        "kind": "force_and_speed_to_power",
-        "model": ForceAndSpeedToPowerAdapter,
-    },
-    "adapter.speed_to_force_poly": {
-        "component_type": "adapter",
-        "kind": "speed_to_force_poly",
-        "model": SpeedToForcePoly,
-    },
-    "adapter.power_to_power_poly": {
-        "component_type": "adapter",
-        "kind": "power_to_power_poly",
-        "model": PowerToPowerPolyAdapter,
     },
     "storage.fuel": {
         "component_type": "storage",

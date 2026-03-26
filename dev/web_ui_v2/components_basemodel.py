@@ -113,7 +113,7 @@ class PowerToPowerPolyAdapter(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de puissance en entrée.")
-    target: str = Field(title="Convertisseur cible", description="Nom/identifiant du convertisseur cible.")
+    target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en entrée", default="W")
     unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
     coeffs: list[float] = Field(
@@ -145,7 +145,7 @@ class SpeedToPowerPolyAdapter(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
-    target: str = Field(title="Convertisseur cible", description="Nom/identifiant du convertisseur cible.")
+    target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
     coeffs: list[float] = Field(
@@ -181,7 +181,7 @@ class ForceAndSpeedToPowerAdapter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     force_source: str = Field(title="Profil de force source", description="Nom du profil de force en entrée.")
     speed_source: str = Field(title="Profil de vitesse source", description="Nom du profil de vitesse en entrée.")
-    target: str = Field(title="Convertisseur cible", description="Nom/identifiant du convertisseur cible.")
+    target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     force_unit_in: Literal["N", "kN", "MN"] = Field(title="Unité de force, en entrée", default="N")
     speed_unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
