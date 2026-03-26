@@ -84,18 +84,33 @@ def _schema_db_payload(schema_store: dict[str, Any]) -> dict[str, Any]:
     return {"name": name, "components": comps}
 
 
+_TARGETED_ADAPTER_KINDS = {
+    "speed_to_power_poly",
+    "force_and_speed_to_power",
+    "power_to_power_poly",
+    "speed_to_eta_poly",
+}
+
+
+def _component_seed_by_name(component_name: str) -> tuple[str, str, dict[str, Any]]:
+    t = get_template_by_name(component_name)
+    if not isinstance(t, dict):
+        return "", "", {}
+    ctype = str(t.get("component_type", ""))
+    kind = str(t.get("kind", ""))
+    _, seed = seed_from_template(ctype, kind, t.get("payload", {}))
+    d = seed if isinstance(seed, dict) else {}
+    return ctype, kind, d
+
+
 def _schema_edges(schema_components: list[str]) -> list[tuple[str, str]]:
     names = set(schema_components)
     edges: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for dst in schema_components:
-        t = get_template_by_name(dst)
-        if not isinstance(t, dict):
+        ctype, kind, d = _component_seed_by_name(dst)
+        if not ctype:
             continue
-        ctype = str(t.get("component_type", ""))
-        kind = str(t.get("kind", ""))
-        _, seed = seed_from_template(ctype, kind, t.get("payload", {}))
-        d = seed if isinstance(seed, dict) else {}
 
         refs: list[str] = []
         for key in ("source", "force_source", "speed_source", "from_bus", "to_bus", "eta_source"):
@@ -107,6 +122,14 @@ def _schema_edges(schema_components: list[str]) -> list[tuple[str, str]]:
             eta_src = str(params.get("eta_source", "")).strip()
             if eta_src:
                 refs.append(eta_src)
+        # Liaison explicite adaptateur -> convertisseur cible.
+        if ctype == "adapter" and kind in _TARGETED_ADAPTER_KINDS:
+            target = str(d.get("target", "")).strip()
+            if target and target in names and target != dst:
+                edge = (dst, target)
+                if edge not in seen:
+                    seen.add(edge)
+                    edges.append(edge)
 
         for src in refs:
             if src in names and src != dst:
@@ -165,6 +188,28 @@ def _validate_schema(schema_components: list[str], catalog: dict[str, dict[str, 
     missing = [c for c in schema_components if c not in catalog]
     if missing:
         return f"Validation echec: composants manquants -> {', '.join(missing)}"
+
+    # Contrainte UI: target obligatoire et valide pour adaptateurs qui alimentent un convertisseur.
+    converter_ids = {
+        c for c in schema_components
+        if str((catalog.get(c) or {}).get("component_type", "")) == "converter"
+    }
+    for comp_id in schema_components:
+        item = catalog.get(comp_id) or {}
+        if str(item.get("component_type", "")) != "adapter":
+            continue
+        kind = str(item.get("kind", ""))
+        if kind not in _TARGETED_ADAPTER_KINDS:
+            continue
+        _, _, seed = _component_seed_by_name(comp_id)
+        target = str(seed.get("target", "")).strip()
+        if not target:
+            return f"Validation echec: adaptateur '{comp_id}' sans convertisseur cible (target)."
+        if target not in converter_ids:
+            return (
+                f"Validation echec: target '{target}' de l'adaptateur '{comp_id}' "
+                "n'est pas un convertisseur present dans le schema."
+            )
 
     # Contrainte UI MVP: plusieurs convertisseurs ne doivent pas alimenter le meme to_bus.
     # (Reste volontairement dans l'UI, pas dans le solver metier.)

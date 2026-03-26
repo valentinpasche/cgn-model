@@ -81,102 +81,140 @@ def build_layout():
                         ),
                     ],
                 ),
-                html.H3("Schemas (DB)", style={"fontSize": "1.45rem", "marginBottom": "6px"}),
                 html.Div(
                     [
+                        # Haut gauche: schemas
                         html.Div(
                             [
+                                html.H3("Gestion des schémas (DB)", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                                 html.Div(
                                     [
-                                        dcc.Dropdown(id="v2s-select", options=[], placeholder="Selectionner un schema en base", style={"flex": "1 1 auto", "minWidth": "220px"}),
+                                        html.Div(
+                                            [
+                                                dcc.Dropdown(id="v2s-select", options=[], placeholder="Selectionner un schema en base", style={"flex": "1 1 auto", "minWidth": "220px"}),
+                                            ],
+                                            style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
+                                        ),
+                                        html.Div(
+                                            [
+                                                html.Button("Charger, Editer le schema", id="v2s-load", n_clicks=0),
+                                                html.Button("Rafraichir", id="v2s-refresh", n_clicks=0, style={"marginLeft": "8px"}),
+                                                html.Button("Supprimer", id="v2s-delete", n_clicks=0, style={"marginLeft": "8px"}),
+                                            ],
+                                            style={"marginBottom": "8px"},
+                                        ),
+                                        html.Div(id="v2s-form-container", children=render_schema_form({"name": "", "components": []})),
+                                        html.Div(
+                                            [
+                                                html.Button("Valider", id="v2s-validate", n_clicks=0),
+                                                html.Button("Sauvegarder", id="v2s-save", n_clicks=0, style={"marginLeft": "8px"}),
+                                            ],
+                                            style={"marginTop": "10px"},
+                                        ),
+                                        html.Div(id="v2s-status", style={"marginTop": "8px"}),
                                     ],
-                                    style={"display": "flex", "alignItems": "center", "marginBottom": "8px", "width": "100%"},
+                                    style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
                                 ),
-                                html.Div(
-                                    [
-                                        html.Button("Charger, Editer le schema", id="v2s-load", n_clicks=0),
-                                        html.Button("Rafraichir", id="v2s-refresh", n_clicks=0, style={"marginLeft": "8px"}),
-                                        html.Button("Supprimer", id="v2s-delete", n_clicks=0, style={"marginLeft": "8px"}),
-                                    ],
-                                    style={"marginBottom": "8px"},
-                                ),
-                                html.Div(id="v2s-form-container", children=render_schema_form({"name": "", "components": []})),
-                                html.Div(
-                                    [
-                                        html.Button("Valider", id="v2s-validate", n_clicks=0),
-                                        html.Button("Sauvegarder", id="v2s-save", n_clicks=0, style={"marginLeft": "8px"}),
-                                    ],
-                                    style={"marginTop": "10px"},
-                                ),
-                                html.Div(id="v2s-status", style={"marginTop": "8px"}),
                             ],
-                            style={"width": "100%", "border": "1px solid #e5e5e5", "borderRadius": "8px", "padding": "10px", "display": "flex", "flexDirection": "column"},
+                            style={"gridColumn": "1", "gridRow": "1"},
                         ),
-                    ],
-                    style={"display": "flex", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "marginBottom": "10px"},
-                ),
-                html.H3("Visualisation du schema", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
-                html.Div(
-                    [
-                        html.Div(
-                            dcc.RadioItems(
-                                id="v2cfg-view-mode",
-                                options=[
-                                    {"label": "Vue simple", "value": "simple", "disabled": True},
-                                    {"label": "Vue detaillee", "value": "detailed", "disabled": True},
-                                ],
-                                value="simple",
-                                inline=True,
-                                inputStyle={"marginRight": "6px", "marginLeft": "10px"},
-                            ),
-                            style={"marginBottom": "8px"},
-                        ),
+                        # Haut droite: visualisation
                         html.Div(
                             [
-                                Mermaid(
-                                    id="v2cfg-mermaid",
-                                    chart='flowchart LR\n  n0["Visualisation schema en cours"]\n  n1["Placeholder"]\n  n0 --> n1',
-                                )
+                                html.H3("Visualisation du schema", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
+                                html.Div(
+                                    [
+                                        html.Div(
+                                            dcc.RadioItems(
+                                                id="v2cfg-view-mode",
+                                                options=[
+                                                    {"label": "Vue simple", "value": "simple", "disabled": True},
+                                                    {"label": "Vue detaillee", "value": "detailed", "disabled": True},
+                                                ],
+                                                value="simple",
+                                                inline=True,
+                                                inputStyle={"marginRight": "6px", "marginLeft": "10px"},
+                                            ),
+                                            style={"marginBottom": "8px"},
+                                        ),
+                                        html.Div(
+                                            [
+                                                Mermaid(
+                                                    id="v2cfg-mermaid",
+                                                    chart='flowchart LR\n  n0["Visualisation schema en cours"]\n  n1["Placeholder"]\n  n0 --> n1',
+                                                )
+                                            ],
+                                            style={"minHeight": "360px"},
+                                        ),
+                                    ],
+                                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
+                                ),
                             ],
-                            style={"minHeight": "360px"},
+                            style={"gridColumn": "2", "gridRow": "1"},
                         ),
-                    ],
-                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "marginBottom": "10px"},
-                ),
-                html.H3("Gestion des composants (DB)", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
-                html.Div(
-                    [
+                        # Bas gauche: composants
                         html.Div(
                             [
-                                dcc.Dropdown(id="v2m-select", options=[], placeholder="Selectionner un composant en base", style={"width": "100%"}),
+                                html.H3("Gestion des composants (DB)", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                                 html.Div(
                                     [
-                                        html.Button("Charger, Editer le formulaire", id="v2m-load-edit", n_clicks=0),
-                                        html.Button("Rafraichir", id="v2db-refresh", n_clicks=0, style={"marginLeft": "8px"}),
-                                        html.Button("Supprimer", id="v2m-delete", n_clicks=0, style={"marginLeft": "8px"}),
+                                        dcc.Dropdown(id="v2m-select", options=[], placeholder="Selectionner un composant en base", style={"width": "100%"}),
+                                        html.Div(
+                                            [
+                                                html.Button("Charger, Editer le formulaire", id="v2m-load-edit", n_clicks=0),
+                                                html.Button("Rafraichir", id="v2db-refresh", n_clicks=0, style={"marginLeft": "8px"}),
+                                                html.Button("Supprimer", id="v2m-delete", n_clicks=0, style={"marginLeft": "8px"}),
+                                            ],
+                                            style={"marginTop": "8px", "marginBottom": "8px"},
+                                        ),
+                                        html.Label("Type de composant"),
+                                        dcc.Dropdown(id="v2m-type", options=TYPE_OPTIONS, value="profile", clearable=False),
+                                        html.Div(style={"height": "8px"}),
+                                        html.Label("Modele de composant"),
+                                        dcc.Dropdown(id="v2m-model", options=model_options("profile"), value=default_key, clearable=False),
+                                        html.Div(style={"height": "10px"}),
+                                        html.Div(id="v2m-form-container", children=render_form(default_key, {})),
+                                        html.Div(
+                                            [
+                                                html.Button("Valider", id="v2m-validate", n_clicks=0),
+                                                html.Button("Sauvegarder", id="v2m-save", n_clicks=0, style={"marginLeft": "8px"}),
+                                            ],
+                                            style={"marginTop": "10px"},
+                                        ),
+                                        html.Div(id="v2m-status", style={"marginTop": "8px"}),
                                     ],
-                                    style={"marginTop": "8px", "marginBottom": "8px"},
+                                    style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
                                 ),
-                                html.Label("Type de composant"),
-                                dcc.Dropdown(id="v2m-type", options=TYPE_OPTIONS, value="profile", clearable=False),
-                                html.Div(style={"height": "8px"}),
-                                html.Label("Modele de composant"),
-                                dcc.Dropdown(id="v2m-model", options=model_options("profile"), value=default_key, clearable=False),
-                                html.Div(style={"height": "10px"}),
-                                html.Div(id="v2m-form-container", children=render_form(default_key, {})),
-                                html.Div(
-                                    [
-                                        html.Button("Valider", id="v2m-validate", n_clicks=0),
-                                        html.Button("Sauvegarder", id="v2m-save", n_clicks=0, style={"marginLeft": "8px"}),
-                                    ],
-                                    style={"marginTop": "10px"},
-                                ),
-                                html.Div(id="v2m-status", style={"marginTop": "8px"}),
                             ],
-                            style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
+                            style={"gridColumn": "1", "gridRow": "2"},
+                        ),
+                        # Bas droite: resultats placeholder
+                        html.Div(
+                            [
+                                html.H3("Resultats", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
+                                html.Div(
+                                    [
+                                        html.P("Zone placeholder (graphique + export)."),
+                                    ],
+                                    style={
+                                        "border": "1px solid #ddd",
+                                        "borderRadius": "8px",
+                                        "padding": "10px",
+                                        "minHeight": "360px",
+                                        "backgroundColor": "#fafafa",
+                                    },
+                                ),
+                            ],
+                            style={"gridColumn": "2", "gridRow": "2"},
                         ),
                     ],
-                    style={"display": "flex"},
+                    style={
+                        "display": "grid",
+                        "gridTemplateColumns": "1fr 1fr",
+                        "gridTemplateRows": "auto auto",
+                        "gap": "12px",
+                        "alignItems": "start",
+                    },
                 ),
             ],
             style={"margin": "16px"},

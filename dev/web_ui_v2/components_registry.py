@@ -177,7 +177,13 @@ def render_form(model_key: str | None, seed: dict[str, Any] | None):
         try:
             item = model_cls.model_validate(seed)
         except Exception:  # noqa: BLE001
+            # Mode "transitoire UI": conserver le seed brut pour ne pas
+            # reinitialiser le formulaire pendant l'edition.
             safe_seed = {k: v for k, v in seed.items() if k in model_cls.model_fields}
+            # Cas connu: switch vers speed_to_eta_poly avec un ancien unit_out='W'.
+            # On force la valeur attendue pour eviter une erreur bloquante.
+            if model_key == "adapter.speed_to_eta_poly":
+                safe_seed["unit_out"] = "-"
             item = model_cls.model_construct(**safe_seed)
     return ModelForm(item, AIO_ID, FORM_ID, debounce=200, form_cols=10, fields_repr=fields_repr(model_key, seed))
 
