@@ -93,6 +93,37 @@ class ConstantEtaConverter(BaseModel):
     eta: float = Field(title="Rendement, (0 < eta <= 1)", gt=0, le=1, allow_inf_nan=False, description="Valeur numérique entre 0 et 1.")
 
 
+class PowerToPowerPolyAdapter(BaseModel):
+    """
+    Adaptateur puissance -> puissance via polynome
+
+    Parameters
+    ----------
+    coeffs : tuple[float, ...]
+        Coefficients (a0, a1, a2, ...).
+    unit_in : str
+        Unite attendue en entree (ex. "kW").
+    unit_out : str
+        Unite de sortie (ex. "W").
+
+    Notes
+    -----
+    - P(p) = a0 + a1*p + a2*p^2 + ...
+    - Conversion d'unites automatique vers unit_in.
+    """
+    id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
+    source: str = Field(title="Profil source", description="Nom du profil de puissance en entrée.")
+    target: str = Field(title="Convertisseur cible", description="Nom/identifiant du convertisseur cible.")
+    unit_in: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en entrée", default="W")
+    unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
+    coeffs: list[float] = Field(
+        title="Coefficients polynomiaux (ordre croissant)",
+        min_length=2,
+        default_factory=lambda: [0.0, 1.0],
+        validate_default=True,
+        description="P(p) = a0 + a1*p + a2*p^2 + ...",
+    )
+
 
 class SpeedToPowerPolyAdapter(BaseModel):
     """
@@ -114,9 +145,16 @@ class SpeedToPowerPolyAdapter(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
+    target: str = Field(title="Convertisseur cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
-    coeffs: list[float] = Field(title="Coefficients polynomiaux (ordre croissant)", min_length=1, default_factory=list, description="P(v) = a0 + a1*v + a2*v^2 + ...")
+    coeffs: list[float] = Field(
+        title="Coefficients polynomiaux (ordre croissant)",
+        min_length=1,
+        default_factory=list,
+        validate_default=True,
+        description="P(v) = a0 + a1*v + a2*v^2 + ...",
+    )
 
 
 class ForceAndSpeedToPowerAdapter(BaseModel):
@@ -143,11 +181,11 @@ class ForceAndSpeedToPowerAdapter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     force_source: str = Field(title="Profil de force source", description="Nom du profil de force en entrée.")
     speed_source: str = Field(title="Profil de vitesse source", description="Nom du profil de vitesse en entrée.")
+    target: str = Field(title="Convertisseur cible", description="Nom/identifiant du convertisseur cible.")
     force_unit_in: Literal["N", "kN", "MN"] = Field(title="Unité de force, en entrée", default="N")
     speed_unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en sortie", default="W")
     
-
 
 class SpeedToForcePoly(BaseModel):
     """
@@ -169,9 +207,16 @@ class SpeedToForcePoly(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
+    target: str = Field(title="Convertisseur cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["N", "kN", "MN"] = Field(title="Unité de force, en sortie", default="N")
-    coeffs: list[float] = Field(title="Coefficients polynomiaux (ordre croissant)", min_length=1, default_factory=list, description="F(v) = a0 + a1*v + a2*v^2 + ...")
+    coeffs: list[float] = Field(
+        title="Coefficients polynomiaux (ordre croissant)",
+        min_length=1,
+        default_factory=list,
+        validate_default=True,
+        description="F(v) = a0 + a1*v + a2*v^2 + ...",
+    )
 
 
 default_repr_kwargs = {"decimalScale": 2, "thousandSeparator": "'"}

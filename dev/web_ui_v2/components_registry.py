@@ -16,6 +16,7 @@ from components_basemodel import (
     FileProfile,
     ForceAndSpeedToPowerAdapter,
     NavSpeedProfile,
+    PowerToPowerPolyAdapter,
     SchemaDraft,
     SeriesProfile,
     StorageFuel,
@@ -85,6 +86,11 @@ MODEL_SPECS: dict[str, dict[str, Any]] = {
         "kind": "speed_to_force_poly",
         "model": SpeedToForcePoly,
     },
+    "adapter.power_to_power_poly": {
+        "component_type": "adapter",
+        "kind": "power_to_power_poly",
+        "model": PowerToPowerPolyAdapter,
+    },
     "storage.fuel": {
         "component_type": "storage",
         "kind": "generic",
@@ -127,7 +133,7 @@ def _course_options_for_cruise(cruise_name: str | None) -> list[dict[str, str]]:
 
 
 def fields_repr(model_key: str | None, seed: dict[str, Any] | None = None) -> dict[str, Any]:
-    if model_key in {"adapter.speed_to_power_poly", "adapter.speed_to_force_poly"}:
+    if model_key in {"adapter.speed_to_power_poly", "adapter.speed_to_force_poly", "adapter.power_to_power_poly"}:
         return {
             "coeffs": fields.List(
                 render_type="scalar",
@@ -340,6 +346,7 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "id": raw["id"],
             "kind": kind,
             "source": raw["source"],
+            "target": raw["target"],
             "unit_in": raw.get("unit_in", "m/s"),
             "unit_out": raw.get("unit_out", "W"),
             "params": {"coeffs": raw["coeffs"]},
@@ -348,6 +355,7 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
         component = {
             "id": raw["id"],
             "kind": kind,
+            "target": raw["target"],
             "source": "",
             "unit_in": "",
             "unit_out": raw.get("unit_out", "W"),
@@ -364,8 +372,19 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "id": raw["id"],
             "kind": kind,
             "source": raw["source"],
+            "target": raw["target"],
             "unit_in": raw.get("unit_in", "m/s"),
             "unit_out": raw.get("unit_out", "N"),
+            "params": {"coeffs": raw["coeffs"]},
+        }
+    elif model_key == "adapter.power_to_power_poly":
+        component = {
+            "id": raw["id"],
+            "kind": kind,
+            "source": raw["source"],
+            "target": raw["target"],
+            "unit_in": raw.get("unit_in", "W"),
+            "unit_out": raw.get("unit_out", "W"),
             "params": {"coeffs": raw["coeffs"]},
         }
     elif model_key in {"storage.fuel", "storage.generic"}:
@@ -539,6 +558,7 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
         return key, {
             "id": c.get("id", ""),
             "source": c.get("source", ""),
+            "target": c.get("target", ""),
             "unit_in": c.get("unit_in", "m/s"),
             "unit_out": c.get("unit_out", "W"),
             "coeffs": p.get("coeffs", []),
@@ -548,6 +568,7 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
             "id": c.get("id", ""),
             "force_source": p.get("force_source", ""),
             "speed_source": p.get("speed_source", ""),
+            "target": c.get("target", ""),
             "force_unit_in": p.get("force_unit_in", "N"),
             "speed_unit_in": p.get("speed_unit_in", "m/s"),
             "unit_out": c.get("unit_out", "W"),
@@ -556,9 +577,19 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
         return key, {
             "id": c.get("id", ""),
             "source": c.get("source", ""),
+            "target": c.get("target", ""),
             "unit_in": c.get("unit_in", "m/s"),
             "unit_out": c.get("unit_out", "N"),
             "coeffs": p.get("coeffs", []),
+        }
+    if key == "adapter.power_to_power_poly":
+        return key, {
+            "id": c.get("id", ""),
+            "source": c.get("source", ""),
+            "target": c.get("target", ""),
+            "unit_in": c.get("unit_in", "W"),
+            "unit_out": c.get("unit_out", "W"),
+            "coeffs": p.get("coeffs", [0.0, 1.0]),
         }
     if key in {"storage.fuel", "storage.generic"}:
         vp = c.get("vector_params")
