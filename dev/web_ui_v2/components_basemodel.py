@@ -157,6 +157,43 @@ class SpeedToPowerPolyAdapter(BaseModel):
     )
 
 
+class SpeedToEtaPoly(BaseModel):
+    """
+    Adaptateur vitesse -> rendement via polynome.
+
+    Parameters
+    ----------
+    coeffs : tuple[float, ...]
+        Coefficients (a0, a1, a2, ...).
+    unit_in : str
+        Unite attendue en entree (ex. "m/s").
+    unit_out : str
+        Unite de sortie ("-").
+
+    Notes
+    -----
+    - eta(v) = a0 + a1*v + a2*v^2 + ...
+    - Sortie adimensionnelle pour autowire dans VariableEtaConverter.
+    """
+    id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
+    source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
+    target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
+    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_out: Literal["-"] = Field(
+        title="Unité de sortie adimentionnelle",
+        description="Le rendement généré est adimentionnel.",
+        default="-",
+        json_schema_extra={"repr_kwargs": {"disabled": True}},
+    )
+    coeffs: list[float] = Field(
+        title="Coefficients polynomiaux (ordre croissant)",
+        min_length=1,
+        default_factory=list,
+        validate_default=True,
+        description="eta(v) = a0 + a1*v + a2*v^2 + ...",
+    )
+
+
 class ForceAndSpeedToPowerAdapter(BaseModel):
     """
     Adaptateur multi-entrees: puissance = force * vitesse

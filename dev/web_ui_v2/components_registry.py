@@ -21,6 +21,7 @@ from components_basemodel import (
     SeriesProfile,
     StorageFuel,
     StorageGeneric,
+    SpeedToEtaPoly,
     SpeedToForcePoly,
     SpeedToPowerPolyAdapter,
     VariableEtaConverter,
@@ -70,6 +71,11 @@ MODEL_SPECS: dict[str, dict[str, Any]] = {
         "component_type": "adapter",
         "kind": "speed_to_power_poly",
         "model": SpeedToPowerPolyAdapter,
+    },
+    "adapter.speed_to_eta_poly": {
+        "component_type": "adapter",
+        "kind": "speed_to_eta_poly",
+        "model": SpeedToEtaPoly,
     },
     "adapter.speed_to_force_poly": {
         "component_type": "adapter",
@@ -133,7 +139,12 @@ def _course_options_for_cruise(cruise_name: str | None) -> list[dict[str, str]]:
 
 
 def fields_repr(model_key: str | None, seed: dict[str, Any] | None = None) -> dict[str, Any]:
-    if model_key in {"adapter.speed_to_power_poly", "adapter.speed_to_force_poly", "adapter.power_to_power_poly"}:
+    if model_key in {
+        "adapter.speed_to_power_poly",
+        "adapter.speed_to_force_poly",
+        "adapter.power_to_power_poly",
+        "adapter.speed_to_eta_poly",
+    }:
         return {
             "coeffs": fields.List(
                 render_type="scalar",
@@ -376,6 +387,16 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "unit_out": raw.get("unit_out", "N"),
             "params": {"coeffs": raw["coeffs"]},
         }
+    elif model_key == "adapter.speed_to_eta_poly":
+        component = {
+            "id": raw["id"],
+            "kind": kind,
+            "source": raw["source"],
+            "target": raw["target"],
+            "unit_in": raw.get("unit_in", "m/s"),
+            "unit_out": raw.get("unit_out", "-"),
+            "params": {"coeffs": raw["coeffs"]},
+        }
     elif model_key == "adapter.power_to_power_poly":
         component = {
             "id": raw["id"],
@@ -578,6 +599,15 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
             "source": c.get("source", ""),
             "unit_in": c.get("unit_in", "m/s"),
             "unit_out": c.get("unit_out", "N"),
+            "coeffs": p.get("coeffs", []),
+        }
+    if key == "adapter.speed_to_eta_poly":
+        return key, {
+            "id": c.get("id", ""),
+            "source": c.get("source", ""),
+            "target": c.get("target", ""),
+            "unit_in": c.get("unit_in", "m/s"),
+            "unit_out": c.get("unit_out", "-"),
             "coeffs": p.get("coeffs", []),
         }
     if key == "adapter.power_to_power_poly":
