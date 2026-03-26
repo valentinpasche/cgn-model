@@ -166,6 +166,30 @@ def _validate_schema(schema_components: list[str], catalog: dict[str, dict[str, 
     if missing:
         return f"Validation echec: composants manquants -> {', '.join(missing)}"
 
+    # Contrainte UI MVP: plusieurs convertisseurs ne doivent pas alimenter le meme to_bus.
+    # (Reste volontairement dans l'UI, pas dans le solver metier.)
+    to_bus_map: dict[str, list[str]] = {}
+    for comp_id in schema_components:
+        t = get_template_by_name(comp_id)
+        if not isinstance(t, dict):
+            continue
+        if str(t.get("component_type", "")) != "converter":
+            continue
+        _, seed = seed_from_template(
+            str(t.get("component_type", "")),
+            str(t.get("kind", "")),
+            t.get("payload", {}),
+        )
+        s = seed if isinstance(seed, dict) else {}
+        to_bus = str(s.get("to_bus", "")).strip()
+        if not to_bus or to_bus in {"auto-généré", "auto-genere"}:
+            continue
+        to_bus_map.setdefault(to_bus, []).append(comp_id)
+    multi_feeders = {bus: ids for bus, ids in to_bus_map.items() if len(ids) > 1}
+    if multi_feeders:
+        details = ", ".join(f"{bus}: {ids}" for bus, ids in multi_feeders.items())
+        return f"Validation echec: plusieurs convertisseurs alimentent le meme to_bus -> {details}"
+
     incoming = {c: 0 for c in schema_components}
     outgoing = {c: 0 for c in schema_components}
     for src, dst in _schema_edges(schema_components):
