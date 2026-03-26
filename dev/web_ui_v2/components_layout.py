@@ -14,7 +14,7 @@ def build_layout():
     return dmc.MantineProvider(
         html.Div(
             [
-                html.H2("CGN - Interface bateau (V2)"),
+                html.H1("CGN - Interface bateau, simulation énergétique"),
                 dcc.Interval(id="v2m-refresh", interval=300, n_intervals=0, max_intervals=1),
                 dcc.Store(id="v2db-rev", data=0),
                 dcc.Store(id="v2m-form-seed", data={}),
