@@ -15,27 +15,51 @@ def _sanitize(raw: str) -> str:
 
 
 def _render_node(node_id: str, label: str, shape: str) -> str:
+    # Mermaid n'accepte pas toujours les labels vides (""), surtout selon la shape.
+    # On force un placeholder minimal pour conserver le noeud sans texte lisible.
+    safe_label = label if str(label).strip() else " "
     if shape == "profile":
-        return f'  {node_id}[("{label}")]'
+        return f'  {node_id}[("{safe_label}")]'
     if shape == "adapter":
-        return f'  {node_id}{{{{"{label}"}}}}'
+        return f'  {node_id}{{{{"{safe_label}"}}}}'
     if shape == "input":
-        return f'  {node_id}{{"{label}"}}'
+        return f'  {node_id}{{"{safe_label}"}}'
     if shape == "bus":
-        return f'  {node_id}(("{label}"))'
+        return f'  {node_id}(("{safe_label}"))'
     if shape == "converter":
-        return f'  {node_id}["{label}"]'
+        return f'  {node_id}["{safe_label}"]'
     if shape == "storage":
-        return f'  {node_id}((("{label}")))'
-    return f'  {node_id}["{label}"]'
+        return f'  {node_id}((("{safe_label}")))'
+    return f'  {node_id}["{safe_label}"]'
 
 
-def yaml_to_mermaid(cfg: dict[str, Any]) -> str:
+def yaml_to_mermaid(
+    cfg: dict[str, Any],
+    *,
+    show_inputs: bool = True,
+    show_input_labels: bool = True,
+    show_bus_labels: bool = True,
+    flow_direction: str = "LR",
+) -> str:
     """
     Genere un diagramme Mermaid `flowchart LR` a partir du YAML complet.
 
     En cas de reference inconnue, cree un noeud explicite:
     `ERROR: unknown_ref:<id>`.
+
+    Parameters
+    ----------
+    cfg : dict[str, Any]
+        Configuration complète.
+    show_input_labels : bool, optional
+        Affiche les noms des noeuds `inputs` (par défaut True).
+    show_bus_labels : bool, optional
+        Affiche les noms des noeuds `buses` (par défaut True).
+    show_inputs : bool, optional
+        Affiche les noeuds `inputs`. Si False, les liaisons sont compactées en
+        `source --> bus` (par défaut True).
+    flow_direction : str, optional
+        Direction Mermaid du flowchart (`LR`, `TB`, `RL`, `BT`), par défaut `LR`.
     """
     profiles = cfg.get("profiles", []) or []
     adapters = cfg.get("adapters", []) or []
@@ -44,7 +68,10 @@ def yaml_to_mermaid(cfg: dict[str, Any]) -> str:
     converters = cfg.get("converters", []) or []
     storages = cfg.get("storages", []) or []
 
-    lines: list[str] = ["flowchart LR"]
+    direction = str(flow_direction or "LR").upper().strip()
+    if direction not in {"LR", "TB", "RL", "BT"}:
+        direction = "LR"
+    lines: list[str] = [f"flowchart {direction}"]
     nodes: dict[str, tuple[str, str]] = {}
     alias: dict[str, str] = {}
 
@@ -79,13 +106,16 @@ def yaml_to_mermaid(cfg: dict[str, Any]) -> str:
         aid = str(a.get("id", "unknown_adapter"))
         ensure_node(aid, aid, "adapter")
 
-    for i in inputs:
-        iid = str(i.get("id", "unknown_input"))
-        ensure_node(iid, iid, "input")
+    if show_inputs:
+        for i in inputs:
+            iid = str(i.get("id", "unknown_input"))
+            ilabel = iid if show_input_labels else ""
+            ensure_node(iid, ilabel, "input")
 
     for b in buses:
         bid = str(b.get("id", "unknown_bus"))
-        ensure_node(bid, bid, "bus")
+        blabel = bid if show_bus_labels else ""
+        ensure_node(bid, blabel, "bus")
 
     for c in converters:
         cid = str(c.get("id", "unknown_converter"))
@@ -122,11 +152,15 @@ def yaml_to_mermaid(cfg: dict[str, Any]) -> str:
         iid = str(i.get("id", "unknown_input"))
         src = str(i.get("source", "")).strip()
         bus = str(i.get("bus", "")).strip()
-        i_node = ref_node(iid)
-        if src:
-            add_edge(f"  {ref_node(src)} --> {i_node}", "context")
-        if bus:
-            add_edge(f"  {i_node} --> {ref_node(bus)}", "context")
+        if show_inputs:
+            i_node = ref_node(iid)
+            if src:
+                add_edge(f"  {ref_node(src)} --> {i_node}", "context")
+            if bus:
+                add_edge(f"  {i_node} --> {ref_node(bus)}", "context")
+        else:
+            if src and bus:
+                add_edge(f"  {ref_node(src)} --> {ref_node(bus)}", "context")
 
     for c in converters:
         cid = str(c.get("id", "unknown_converter"))
@@ -170,15 +204,19 @@ def yaml_to_mermaid(cfg: dict[str, Any]) -> str:
     lines.append("")
     lines.append("  classDef energyBus fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;")
     lines.append("  classDef energyConv fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100;")
+    lines.append("  classDef profile fill:#e8f5e9,stroke:#2e7d32,stroke-width:1.8px,color:#1b5e20;")
+    lines.append("  classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c;")
     lines.append("  classDef context fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,color:#424242;")
     lines.append("  classDef error fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c;")
 
     bus_nodes = [node_id for node_id, (_label, shape) in nodes.items() if shape == "bus"]
     conv_nodes = [node_id for node_id, (_label, shape) in nodes.items() if shape == "converter"]
+    profile_nodes = [node_id for node_id, (_label, shape) in nodes.items() if shape == "profile"]
+    storage_nodes = [node_id for node_id, (_label, shape) in nodes.items() if shape == "storage"]
     context_nodes = [
         node_id
         for node_id, (_label, shape) in nodes.items()
-        if shape in ("profile", "adapter", "input", "storage", "generic")
+        if shape in ("adapter", "input", "generic")
     ]
     error_nodes = [
         node_id for node_id, (label, _shape) in nodes.items() if label.startswith("ERROR:")
@@ -188,6 +226,10 @@ def yaml_to_mermaid(cfg: dict[str, Any]) -> str:
         lines.append(f"  class {','.join(bus_nodes)} energyBus;")
     if conv_nodes:
         lines.append(f"  class {','.join(conv_nodes)} energyConv;")
+    if profile_nodes:
+        lines.append(f"  class {','.join(profile_nodes)} profile;")
+    if storage_nodes:
+        lines.append(f"  class {','.join(storage_nodes)} storage;")
     if context_nodes:
         lines.append(f"  class {','.join(context_nodes)} context;")
     if error_nodes:

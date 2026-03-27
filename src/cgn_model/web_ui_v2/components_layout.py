@@ -171,15 +171,15 @@ def build_layout():
                         # Milieu droite: visualisation
                         html.Div(
                             [
-                                html.H3("Visualisation du schema", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
+                                html.H3("Visualisation - Schema fonctionnel", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                                 html.Div(
                                     [
                                         html.Div(
                                             dcc.RadioItems(
                                                 id="v2cfg-view-mode",
                                                 options=[
-                                                    {"label": "Vue simple", "value": "simple", "disabled": True},
-                                                    {"label": "Vue detaillee", "value": "detailed", "disabled": True},
+                                                    {"label": "Schema en cours", "value": "simple"},
+                                                    {"label": "Configuration compilee", "value": "yaml"},
                                                 ],
                                                 value="simple",
                                                 inline=True,
@@ -194,6 +194,7 @@ def build_layout():
                                                     chart='flowchart LR\n  n0["Visualisation schema en cours"]\n  n1["Placeholder"]\n  n0 --> n1',
                                                 )
                                             ],
+                                            id="v2cfg-mermaid-container",
                                             style={"minHeight": "360px"},
                                         ),
                                     ],

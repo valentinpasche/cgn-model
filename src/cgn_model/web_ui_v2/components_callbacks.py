@@ -11,6 +11,7 @@ from dash import Input, Output, State, html, no_update
 from dash_pydantic_form import ModelForm
 from pydantic import ValidationError
 
+from cgn_model.web_mvp.services.dag_mermaid import yaml_to_mermaid
 from cgn_model.web_ui_v2.components_basemodel import COURSES_NUMBER
 from cgn_model.web_ui_v2.components_registry import (
     AIO_ID,
@@ -151,6 +152,13 @@ def _schema_to_mermaid(schema_components: list[str], catalog: dict[str, dict[str
 
     node_ids: dict[str, str] = {}
     lines: list[str] = ["flowchart LR"]
+    profile_nodes: list[str] = []
+    adapter_nodes: list[str] = []
+    converter_nodes: list[str] = []
+    storage_nodes: list[str] = []
+    generic_nodes: list[str] = []
+    unknown_nodes: list[str] = []
+
     for idx, comp_id in enumerate(schema_components, start=1):
         node_ids[comp_id] = f"n_{sanitize(comp_id)}_{idx}"
 
@@ -159,26 +167,46 @@ def _schema_to_mermaid(schema_components: list[str], catalog: dict[str, dict[str
         item = catalog.get(comp_id)
         if item is None:
             lines.append(f'  {node_id}["ERROR: unknown_ref:{comp_id}"]')
+            unknown_nodes.append(node_id)
             continue
         ctype = str(item.get("component_type", ""))
         if ctype == "profile":
             lines.append(f'  {node_id}[("{comp_id}")]')
+            profile_nodes.append(node_id)
         elif ctype == "adapter":
             lines.append(f'  {node_id}{{{{"{comp_id}"}}}}')
+            adapter_nodes.append(node_id)
         elif ctype == "converter":
             lines.append(f'  {node_id}["{comp_id}"]')
+            converter_nodes.append(node_id)
         elif ctype == "storage":
             lines.append(f'  {node_id}((("{comp_id}")))')
+            storage_nodes.append(node_id)
         else:
             lines.append(f'  {node_id}["{comp_id}"]')
+            generic_nodes.append(node_id)
 
     for src, dst in _schema_edges(schema_components):
         lines.append(f"  {node_ids[src]} --> {node_ids[dst]}")
 
-    unknown_nodes = [node_ids[c] for c in schema_components if c not in catalog]
+    lines.append("")
+    lines.append("  classDef energyConv fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100;")
+    lines.append("  classDef profile fill:#e8f5e9,stroke:#2e7d32,stroke-width:1.8px,color:#1b5e20;")
+    lines.append("  classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c;")
+    lines.append("  classDef context fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,color:#424242;")
+    lines.append("  classDef error fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c;")
+
+    if converter_nodes:
+        lines.append(f"  class {','.join(converter_nodes)} energyConv;")
+    if profile_nodes:
+        lines.append(f"  class {','.join(profile_nodes)} profile;")
+    if storage_nodes:
+        lines.append(f"  class {','.join(storage_nodes)} storage;")
+    context_nodes = adapter_nodes + generic_nodes
+    if context_nodes:
+        lines.append(f"  class {','.join(context_nodes)} context;")
     if unknown_nodes:
-        lines.append("  classDef unknown fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c;")
-        lines.append(f"  class {','.join(unknown_nodes)} unknown;")
+        lines.append(f"  class {','.join(unknown_nodes)} error;")
     return "\n".join(lines)
 
 
@@ -504,12 +532,37 @@ def register_callbacks(app):
         Input("v2m-refresh", "n_intervals"),
         Input("v2db-rev", "data"),
         Input("v2s-current", "data"),
+        Input("v2cfg-view-mode", "value"),
+        Input("v2c-yaml-store", "data"),
     )
-    def schema_refresh(_: int, __: int, current_schema: dict[str, Any] | None):
+    def schema_refresh(
+        _: int,
+        __: int,
+        current_schema: dict[str, Any] | None,
+        view_mode: str | None,
+        compiled_yaml: dict[str, Any] | None,
+    ):
         schema_opts = [{"label": str(r.get("name", "")), "value": str(r.get("name", ""))} for r in list_schemas() if str(r.get("name", "")).strip()]
         current = current_schema if isinstance(current_schema, dict) else {"name": "schema_local", "components": []}
-        comps = _schema_components_list(current)
-        mermaid = _schema_to_mermaid(comps, _catalog())
+        mode = (view_mode or "simple").strip().lower()
+
+        if mode == "yaml":
+            if isinstance(compiled_yaml, dict) and compiled_yaml:
+                try:
+                    mermaid = yaml_to_mermaid(
+                        compiled_yaml,
+                        show_inputs=False,
+                        show_input_labels=False,
+                        show_bus_labels=False,
+                        flow_direction="LR",
+                    )
+                except Exception:
+                    mermaid = 'flowchart LR\n  n0["Erreur rendu YAML"]'
+            else:
+                mermaid = 'flowchart LR\n  n0["YAML pas compile"]'
+        else:
+            comps = _schema_components_list(current)
+            mermaid = _schema_to_mermaid(comps, _catalog())
         return schema_opts, mermaid
 
     @app.callback(
