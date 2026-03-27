@@ -6,7 +6,7 @@ Schemas Pydantic des sections vessel (profiles, adapters, inputs, storages).
 
 from collections import Counter, deque
 from typing import Literal, Any, Annotated
-from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, field_validator
+from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, field_validator, AliasChoices
 
 type VesselType = Literal["DE", "steam", "undefined"]
 
@@ -236,7 +236,66 @@ class InputBindCfg(BaseModel):
             return synonyms.get(s, s)
         return v
 
-# ---- Storage / Vector specs à définir ---
+# ---- Storage + Vector specs optionnel ---
+
+from cgn_model.vessel_model.utils import PCI_Massic_Unit, PCI_Volumic_Unit, StorageLevelUnit
+
+class EnergyVectorParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pci_basis: Literal["mass","volume"] | None = None
+    pci_value: float | None = Field(ge=0, default=None)
+    pci_mass_unit: PCI_Massic_Unit | None = None
+    pci_volume_unit: PCI_Volumic_Unit | None = None
+    density_kg_m3: float | None = Field(ge=0,default=None)
+
+    @model_validator(mode="after")
+    def check_pci_consistency(self):
+        """
+        Regles de coherence:
+        - basis='mass'   => pci_mass_unit obligatoire, pci_volume_unit interdit
+        - basis='volume' => pci_volume_unit obligatoire, pci_mass_unit interdit
+        - basis absent   => aucune unite PCI ne doit etre renseignee
+        - pci_value suit la meme logique que basis
+        """
+        basis = self.pci_basis
+
+        if basis == "mass":
+            if self.pci_mass_unit is None:
+                raise ValueError("EnergyVectorParams: 'pci_mass_unit' obligatoire quand pci_basis='mass'.")
+            if self.pci_volume_unit is not None:
+                raise ValueError("EnergyVectorParams: ne pas renseigner 'pci_volume_unit' quand pci_basis='mass'.")
+            if self.pci_value is None:
+                raise ValueError("EnergyVectorParams: 'pci_value' obligatoire quand pci_basis='mass'.")
+
+        elif basis == "volume":
+            if self.pci_volume_unit is None:
+                raise ValueError("EnergyVectorParams: 'pci_volume_unit' obligatoire quand pci_basis='volume'.")
+            if self.pci_mass_unit is not None:
+                raise ValueError("EnergyVectorParams: ne pas renseigner 'pci_mass_unit' quand pci_basis='volume'.")
+            if self.pci_value is None:
+                raise ValueError("EnergyVectorParams: 'pci_value' obligatoire quand pci_basis='volume'.")
+
+        else:
+            # Pas de base PCI => pas de details PCI
+            if self.pci_mass_unit is not None or self.pci_volume_unit is not None or self.pci_value is not None:
+                raise ValueError(
+                    "EnergyVectorParams: renseignez 'pci_basis' ('mass' ou 'volume') "
+                    "avant d'ajouter pci_value / pci_mass_unit / pci_volume_unit."
+                )
+
+        return self
+
+
+class InitialStorageLevel(BaseModel):
+    """
+    Niveau initial du stockage (énergie, masse ou volume).
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    value: float = Field(ge=0)
+    unit: StorageLevelUnit
+
 class StorageCfg(BaseModel):
     """
     Declaration d'un stockage adosse a un bus du solver.
@@ -247,14 +306,72 @@ class StorageCfg(BaseModel):
         Identifiant du stockage cote vessel.
     bus : str
         Identifiant du bus cote solver.
-    vecteur : str | None
+    vector_energy : str | None
         Identifiant optionnel du vecteur energetique (diesel, H2, battery, ...).
+    vector_params : EnergyVectorParams | None
+        Parametres optionnels (PCI, densite, base mass/volume).
     """
     model_config = ConfigDict(extra="forbid")
 
     id: StrictStr
     bus: StrictStr
-    vecteur: StrictStr | None = None
+    vector_energy: StrictStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("vector_energy", "vector_name", "vector", "vecteur"),
+        serialization_alias="vector_energy",
+    )
+    vector_params: EnergyVectorParams | None = None
+    initial_level: InitialStorageLevel | None = None
+
+    @model_validator(mode="after")
+    def check_initial_level_consistency(self):
+        """
+        Si initial_level est en masse/volume, exige des paramètres de vecteur cohérents.
+        """
+        if self.initial_level is None:
+            return self
+
+        u = str(self.initial_level.unit)
+        if u in {"J", "kJ", "MJ", "Wh", "kWh", "MWh"}:
+            return self
+
+        vp = self.vector_params
+        if vp is None:
+            raise ValueError(
+                "StorageCfg: 'initial_level' en masse/volume nécessite 'vector_params' (PCI, et densité si conversion croisée)."
+            )
+
+        if u in {"kg", "t"}:
+            has_mass_pci = vp.pci_basis == "mass" and vp.pci_value is not None and vp.pci_mass_unit is not None
+            has_volume_bridge = (
+                vp.pci_basis == "volume"
+                and vp.pci_value is not None
+                and vp.pci_volume_unit is not None
+                and vp.density_kg_m3 is not None
+                and vp.density_kg_m3 > 0
+            )
+            if not (has_mass_pci or has_volume_bridge):
+                raise ValueError(
+                    "StorageCfg: initial_level en masse requiert PCI massique, ou PCI volumique + densité."
+                )
+            return self
+
+        if u in {"m3", "l"}:
+            has_volume_pci = vp.pci_basis == "volume" and vp.pci_value is not None and vp.pci_volume_unit is not None
+            has_mass_bridge = (
+                vp.pci_basis == "mass"
+                and vp.pci_value is not None
+                and vp.pci_mass_unit is not None
+                and vp.density_kg_m3 is not None
+                and vp.density_kg_m3 > 0
+            )
+            if not (has_volume_pci or has_mass_bridge):
+                raise ValueError(
+                    "StorageCfg: initial_level en volume requiert PCI volumique, ou PCI massique + densité."
+                )
+            return self
+
+        raise ValueError(f"StorageCfg: unité initial_level non supportée: {u!r}")
 
 # ---- top level
 class VesselSectionsCfg(BaseModel):

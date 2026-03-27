@@ -77,4 +77,8 @@ converters:
 storages:
   - id: "h2_tank"
     bus: "h2"
-    vecteur: "hydrogen"
+    vector_energy: "hydrogen"
+    vector_params:
+      pci_basis: "mass"
+      pci_value: 33.3
+      pci_mass_unit: "kWh/kg"

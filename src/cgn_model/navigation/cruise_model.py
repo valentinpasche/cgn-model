@@ -844,25 +844,22 @@ if __name__ == "__main__":
     print("Pauses (min)     :", c.pause_minutes)
     print("Vitesse moy (km/h):", c.avg_speed_kmh)
     
+    
+    # ---- Récupération des ids
+    
+    tot_list = []
+    croisiere_names = []
+    courses_number = {}
+    for c in croisieres:
+        croisiere_names.append(c.nom)
+        courses_list = []
+        for course in c.courses:
+            courses_list.append(course.numero)
+            tot_list.append(course.numero)
+        courses_number[c.nom] = courses_list
+    tot_set = set(tot_list)
+    
+    print(croisiere_names)
+    print(courses_number)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    

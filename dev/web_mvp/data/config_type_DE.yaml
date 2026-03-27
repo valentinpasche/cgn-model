@@ -1,7 +1,14 @@
 # YAML de configuration, bateau type "Diesel-Electrique"
 
+# Simulation sur une étape "Lausanne -> Vevey Marche"
+
+# ===== Commentaires =====
+## Les coefficients sont repris de la configuration "config_vevey_croisiere"
+## Voir la note "Commentaires" de la configuration susmentionnée
+
+
 vessel:
-  name: "Vevey"
+  name: ""
   vessel_type: "DE"
 
 simulation:
@@ -18,8 +25,10 @@ profiles:
     unit: "m/s"
     source: "cgn_croisieres/all"
     select:
-      by: "cruise"                                # "cruise" | "course" | "leg"
-      cruise_name: "Lavaux - Haut-Lac"                       # si by="cruise"
+      by: "leg"                   # "cruise" | "course" | "leg"
+      leg:
+        from_port: "Lausanne"     # si by="leg"
+        to_port: "Vevey Marche"   # si by="leg"
     params:
       acc: 0.05            # [m/s²]
       dec: 0.05            # [m/s²]
@@ -48,7 +57,7 @@ solver:
 
 inputs:
   - id: "shaft_demand"
-    bus: "shaft"
+    bus: "shaft_power"
     source: "shaft_power_from_speed"
     sign: "consume"
 
@@ -58,7 +67,7 @@ inputs:
     sign: "consume"
 
 buses:
-  - id: "shaft"
+  - id: "shaft_power"
     carrier: "Mechanical"
 
   - id: "elec_power"
@@ -70,7 +79,7 @@ buses:
 converters:
   - id: "motor"
     from_bus: "elec_power"
-    to_bus:   "shaft"
+    to_bus:   "shaft_power"
     kind: "constant_eta"
     params:
       eta: 0.9   # [-]
@@ -84,14 +93,6 @@ converters:
       eta_source: "eta_from_speed"
 
 storages:
-  - id: fuel_tank
-    bus: fuel
-    vector_energy: diesel
-    vector_params:
-      pci_basis: volume
-      pci_value: 9.8
-      pci_volume_unit: kWh/l
-      density_kg_m3: 840
-    initial_level:
-      value: 2500
-      unit: l
+  - id: "fuel_tank"
+    bus: "fuel"
+    vecteur: "diesel"

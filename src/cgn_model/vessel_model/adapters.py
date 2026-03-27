@@ -564,13 +564,63 @@ def _build_speed_to_eta_poly(
     )
 
 
+# ============================================================
+# ---- Impl 5 — puissance -> puissance , poly (mono-entrée)
+# ============================================================
 
+class PowerToPowerPolyParams(AdapterParams):
+    coeffs: list[float] = Field(min_length=1)
+    clip_min: float | None = 0.0  # par défaut on clippe à 0
 
+@dataclass
+class PowerToPowerPolyAdapter(AdapterABC):
+    """
+    Adapter puissance -> puissance via polynome.
 
+    Parameters
+    ----------
+    coeffs : tuple[float, ...]
+        Coefficients (a0, a1, a2, ...).
+    unit_in : str
+        Unite attendue en entree (ex. "kW").
+    unit_out : str
+        Unite de sortie (ex. "W").
+    clip_min : float | None
+        Valeur minimale (None pour ne pas clipper).
 
+    Notes
+    -----
+    - P(p) = a0 + a1*p + a2*p^2 + ...
+    - Conversion d'unites automatique vers unit_in.
+    """
+    id: str
+    source: str
+    unit_in: str    # ex 'kW'
+    unit_out: str   # ex 'W'
+    coeffs: tuple[float, ...]  # a0, a1, ...
+    clip_min: float | None
 
+    def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
+        # 1) puissance -> unit_in
+        s, _ = convert_unit(series, unit_in=unit, unit_out=self.unit_in, quantity="power")
+        # 2) poly
+        out = np.zeros_like(s, dtype=np.float64)
+        p = np.ones_like(s, dtype=np.float64)
+        for a in self.coeffs:
+            out += a * p
+            p *= s
+        # 3) clip
+        if self.clip_min is not None:
+            out = np.clip(out, float(self.clip_min), None)
+        # 4) puissance native -> unit_out déclarée
+        out, uo = convert_unit(out, unit_in="W", unit_out=self.unit_out, quantity="power")
+        return out, uo
 
-
-
-
-
+@register("power_to_power_poly", PowerToPowerPolyParams)
+def _build_power_to_power_poly(
+        id: str, source: str, unit_in: str, unit_out: str, p: PowerToPowerPolyParams
+) -> AdapterABC:
+    return PowerToPowerPolyAdapter(
+        id=id, source=source, unit_in=unit_in, unit_out=unit_out,
+        coeffs=tuple(p.coeffs), clip_min=p.clip_min
+    )
