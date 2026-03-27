@@ -398,7 +398,6 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "id": raw["id"],
             "kind": kind,
             "source": raw["source"],
-            "target": raw["target"],
             "unit_in": raw.get("unit_in", "m/s"),
             "unit_out": raw.get("unit_out", "-"),
             "params": {"coeffs": raw["coeffs"]},
@@ -611,7 +610,6 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
         return key, {
             "id": c.get("id", ""),
             "source": c.get("source", ""),
-            "target": c.get("target", ""),
             "unit_in": c.get("unit_in", "m/s"),
             "unit_out": c.get("unit_out", "-"),
             "coeffs": p.get("coeffs", []),

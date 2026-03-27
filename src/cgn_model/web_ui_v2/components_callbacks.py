@@ -89,7 +89,6 @@ _TARGETED_ADAPTER_KINDS = {
     "speed_to_power_poly",
     "force_and_speed_to_power",
     "power_to_power_poly",
-    "speed_to_eta_poly",
 }
 
 
@@ -299,17 +298,66 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
     components = bundle.get("components", []) if isinstance(bundle, dict) else []
     schema_name = str(schema.get("name", "schema_ui_v2")).strip() or "schema_ui_v2"
 
+    def _bus_id(raw: str) -> str:
+        b = str(raw).strip()
+        if not b:
+            return ""
+        return b if b.endswith("_bus") else f"{b}_bus"
+
+    def _is_nonempty(raw: Any) -> bool:
+        return isinstance(raw, str) and raw.strip() != ""
+
+    def _is_auto_token(raw: Any) -> bool:
+        if not isinstance(raw, str):
+            return False
+        v = raw.strip().lower()
+        return v in {"auto-généré", "auto-genere", "auto-generate", "auto_generated", "auto"}
+
     out: dict[str, Any] = {
         "vessel": {"name": schema_name, "vessel_type": "undefined"},
         "simulation": {"dt": 1.0},
+        "solver": {"mode": "inverse"},
         "profiles": [],
         "adapters": [],
         "inputs": [],
-        "solver": {"mode": "inverse"},
         "buses": [],
         "converters": [],
         "storages": [],
     }
+
+    # Index convertisseurs par id (utile pour l'auto-input depuis adapters target).
+    converter_ids: set[str] = set()
+    for item in components if isinstance(components, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("component_type", "")).strip() != "converter":
+            continue
+        payload = item.get("payload", {})
+        comp = payload.get("component", {}) if isinstance(payload, dict) else {}
+        if isinstance(comp, dict) and _is_nonempty(comp.get("id")):
+            converter_ids.add(str(comp.get("id")).strip())
+
+    bus_seen: set[str] = set()
+
+    def _add_bus(bus: str) -> None:
+        if not bus:
+            return
+        if bus in bus_seen:
+            return
+        bus_seen.add(bus)
+        out["buses"].append({"id": bus})
+
+    input_seen: set[str] = set()
+
+    def _make_input_id(adapter_id: str, target_id: str) -> str:
+        base = f"{adapter_id}__to__{target_id}_in"
+        candidate = base
+        i = 1
+        while candidate in input_seen:
+            i += 1
+            candidate = f"{base}_{i}"
+        input_seen.add(candidate)
+        return candidate
 
     for item in components if isinstance(components, list) else []:
         if not isinstance(item, dict):
@@ -319,14 +367,67 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
         comp = payload.get("component", {}) if isinstance(payload, dict) else {}
         if not isinstance(comp, dict):
             continue
+
         if ctype == "profile":
             out["profiles"].append(comp)
         elif ctype == "adapter":
-            out["adapters"].append(comp)
+            adapter = dict(comp)
+            adapter_id = str(adapter.get("id", "")).strip()
+            target = str(adapter.get("target", "")).strip()
+            unit_out = str(adapter.get("unit_out", "")).strip()
+
+            # target n'est pas un champ métier solver: on le retire du YAML final.
+            adapter.pop("target", None)
+            out["adapters"].append(adapter)
+
+            # Génération auto d'input uniquement pour adaptateurs puissance.
+            if unit_out == "W" and target and target in converter_ids and adapter_id:
+                target_bus = _bus_id(target)
+                if target_bus:
+                    _add_bus(target_bus)
+                    out["inputs"].append(
+                        {
+                            "id": _make_input_id(adapter_id, target),
+                            "bus": target_bus,
+                            "source": adapter_id,
+                            "sign": "as_is",
+                        }
+                    )
         elif ctype == "converter":
-            out["converters"].append(comp)
+            conv = dict(comp)
+            conv_id = str(conv.get("id", "")).strip()
+            kind = str(conv.get("kind", "")).strip()
+            params = conv.get("params", {})
+            if not isinstance(params, dict):
+                params = {}
+            if kind == "variable_eta":
+                params = dict(params)
+                params["eta_default"] = 1.0
+            conv["params"] = params
+
+            # to_bus auto: toujours base sur id convertisseur.
+            to_bus = _bus_id(conv_id)
+            conv["to_bus"] = to_bus
+            _add_bus(to_bus)
+
+            from_raw = conv.get("from_bus")
+            if _is_nonempty(from_raw) and not _is_auto_token(from_raw):
+                from_bus = _bus_id(str(from_raw))
+            else:
+                from_bus = f"{conv_id}_amont" if conv_id else ""
+            if from_bus:
+                conv["from_bus"] = from_bus
+                _add_bus(from_bus)
+
+            out["converters"].append(conv)
         elif ctype == "storage":
-            out["storages"].append(comp)
+            storage = dict(comp)
+            storage_id = str(storage.get("id", "")).strip()
+            bus = _bus_id(storage_id) if storage_id else ""
+            if bus:
+                storage["bus"] = bus
+                _add_bus(bus)
+            out["storages"].append(storage)
 
     return out
 
@@ -580,13 +681,6 @@ def register_callbacks(app):
     def show_yaml(_: int, compiled: dict[str, Any] | None):
         text = yaml.safe_dump(compiled or {}, allow_unicode=True, sort_keys=False)
         return True, text
-
-    @app.callback(
-        Output("v2r-json-preview", "children"),
-        Input("v2c-json-store", "data"),
-    )
-    def update_json_preview(bundle: dict[str, Any] | None):
-        return json.dumps(bundle or {}, ensure_ascii=False, indent=2, sort_keys=True)
 
     @app.callback(
         Output("v2c-json-modal", "opened", allow_duplicate=True),

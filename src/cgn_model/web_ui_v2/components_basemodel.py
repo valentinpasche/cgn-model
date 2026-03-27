@@ -188,7 +188,7 @@ class SpeedToEtaPoly(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
-    target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
+    # target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["-"] = Field(
         title="Unité de sortie adimentionnelle",
@@ -518,7 +518,7 @@ class NavParams(BaseModel):
     """
     acc: Quantity = Field(
         title="Accélération (strictement positive)",
-        default_factory=lambda: Quantity(value=0.5, unit="m*s^-2"),
+        default_factory=lambda: Quantity(value=0.05, unit="m*s^-2"),
         json_schema_extra={
             "repr_type": "Quantity",
             "repr_kwargs": {
@@ -530,7 +530,7 @@ class NavParams(BaseModel):
     )
     dec: Quantity = Field(
         title="Décélération (strictement positive)",
-        default_factory=lambda: Quantity(value=0.5, unit="m*s^-2"),
+        default_factory=lambda: Quantity(value=0.05, unit="m*s^-2"),
         json_schema_extra={
             "repr_type": "Quantity",
             "repr_kwargs": {

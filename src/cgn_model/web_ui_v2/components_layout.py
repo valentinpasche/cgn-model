@@ -244,8 +244,7 @@ def build_layout():
                                 html.H3("Resultats", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                                 html.Div(
                                     [
-                                        html.P("JSON du schema valide (debug temporaire):"),
-                                        html.Pre(id="v2r-json-preview", style={"whiteSpace": "pre-wrap", "fontSize": "0.82rem"}),
+                                        html.P("Zone placeholder (graphique + export)."),
                                     ],
                                     style={
                                         "border": "1px solid #ddd",
