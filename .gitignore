@@ -15,3 +15,14 @@ dist/
 # --- (optionnel) Autoriser certains formats précis dans samples ---
 # !/tests/private/samples/**/*.docx
 # !/tests/private/samples/**/*.xml
+
+# --- SQLite (runtime) ---
+*.db
+*.db-shm
+*.db-wal
+
+# --- SQLite templates/versionnes ---
+!src/cgn_model/web_mvp/data/*_template.db
+!src/cgn_model/web_mvp/data/*_examples.db
+!src/cgn_model/web_ui_v2/data/*_template.db
+!src/cgn_model/web_ui_v2/data/*_examples.db
