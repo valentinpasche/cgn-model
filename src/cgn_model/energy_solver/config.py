@@ -45,7 +45,7 @@ class BusCfg(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
     id: StrictStr
-    carrier: StrictStr
+    carrier: StrictStr | None = None  # optionnelle dans le YAML
     unit: StrictStr | None = None  # optionnelle dans le YAML
 
     @model_validator(mode="after")

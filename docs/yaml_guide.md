@@ -198,7 +198,7 @@ Declaration des bus du solver.
 
 Champs :
 - id (str)
-- carrier (str) : "Electrical" | "Mechanical" | "Chemical" (ou autre)
+- carrier (str, optionnel) : "Electrical" | "Mechanical" | "Chemical" (ou autre)
 - unit (str, optionnel) : W (par defaut)
 
 Exemple :
