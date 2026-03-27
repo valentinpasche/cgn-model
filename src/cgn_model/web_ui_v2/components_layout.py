@@ -23,9 +23,12 @@ def build_layout():
                 dcc.Interval(id="v2m-refresh", interval=300, n_intervals=0, max_intervals=1),
                 dcc.Store(id="v2db-rev", data=0),
                 dcc.Store(id="v2m-form-seed", data={}),
+                dcc.Store(id="v2m-reset-guard", data=False),
                 dcc.Store(id="v2m-pending-save", data={}),
                 dcc.Store(id="v2s-pending-save", data={}),
                 dcc.Store(id="v2s-current", data={"name": "", "components": []}),
+                dcc.Store(id="v2c-json-store", data={}),
+                dcc.Store(id="v2c-yaml-store", data={}),
                 dmc.Modal(
                     id="v2m-update-modal",
                     title="Confirmation mise a jour",
@@ -86,6 +89,32 @@ def build_layout():
                         ),
                     ],
                 ),
+                dmc.Modal(
+                    id="v2c-json-modal",
+                    title="JSON schema valide",
+                    opened=False,
+                    size="xl",
+                    children=[
+                        html.Pre(id="v2c-json-content", style={"whiteSpace": "pre-wrap", "fontSize": "0.88rem"}),
+                        html.Div(
+                            [html.Button("Fermer", id="v2c-json-close", n_clicks=0)],
+                            style={"marginTop": "10px"},
+                        ),
+                    ],
+                ),
+                dmc.Modal(
+                    id="v2c-yaml-modal",
+                    title="YAML compilé",
+                    opened=False,
+                    size="xl",
+                    children=[
+                        html.Pre(id="v2c-yaml-content", style={"whiteSpace": "pre-wrap", "fontSize": "0.88rem"}),
+                        html.Div(
+                            [html.Button("Fermer", id="v2c-yaml-close", n_clicks=0)],
+                            style={"marginTop": "10px"},
+                        ),
+                    ],
+                ),
                 html.Div(
                     [
                         # Haut gauche: schemas
@@ -103,7 +132,7 @@ def build_layout():
                                         html.Div(
                                             [
                                                 html.Button("Charger, Editer le schema", id="v2s-load", n_clicks=0),
-                                                html.Button("Rafraichir", id="v2s-refresh", n_clicks=0, style={"marginLeft": "8px"}),
+                                                html.Button("Reinitialiser", id="v2s-refresh", n_clicks=0, style={"marginLeft": "8px"}),
                                                 html.Button("Supprimer", id="v2s-delete", n_clicks=0, style={"marginLeft": "8px"}),
                                             ],
                                             style={"marginBottom": "8px"},
@@ -123,7 +152,23 @@ def build_layout():
                             ],
                             style={"gridColumn": "1", "gridRow": "1"},
                         ),
-                        # Haut droite: visualisation
+                        # Haut droite: compilation (temporaire dev)
+                        html.Div(
+                            [
+                                html.H3("Compilation", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
+                                html.Div(
+                                    [
+                                        html.Button("JSON", id="v2c-show-json", n_clicks=0),
+                                        html.Button("Compiler", id="v2c-compile", n_clicks=0, style={"marginLeft": "8px"}),
+                                        html.Button("YAML", id="v2c-show-yaml", n_clicks=0, style={"marginLeft": "8px"}),
+                                        html.Div(id="v2c-status", style={"marginTop": "8px"}),
+                                    ],
+                                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
+                                ),
+                            ],
+                            style={"gridColumn": "2", "gridRow": "1"},
+                        ),
+                        # Milieu droite: visualisation
                         html.Div(
                             [
                                 html.H3("Visualisation du schema", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
@@ -155,7 +200,7 @@ def build_layout():
                                     style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
                                 ),
                             ],
-                            style={"gridColumn": "2", "gridRow": "1"},
+                            style={"gridColumn": "2", "gridRow": "2"},
                         ),
                         # Bas gauche: composants
                         html.Div(
@@ -167,7 +212,7 @@ def build_layout():
                                         html.Div(
                                             [
                                                 html.Button("Charger, Editer le formulaire", id="v2m-load-edit", n_clicks=0),
-                                                html.Button("Rafraichir", id="v2db-refresh", n_clicks=0, style={"marginLeft": "8px"}),
+                                                html.Button("Reinitialiser", id="v2db-refresh", n_clicks=0, style={"marginLeft": "8px"}),
                                                 html.Button("Supprimer", id="v2m-delete", n_clicks=0, style={"marginLeft": "8px"}),
                                             ],
                                             style={"marginTop": "8px", "marginBottom": "8px"},
@@ -191,7 +236,7 @@ def build_layout():
                                     style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
                                 ),
                             ],
-                            style={"gridColumn": "1", "gridRow": "2"},
+                            style={"gridColumn": "1", "gridRow": "2 / span 2"},
                         ),
                         # Bas droite: resultats placeholder
                         html.Div(
@@ -199,7 +244,8 @@ def build_layout():
                                 html.H3("Resultats", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                                 html.Div(
                                     [
-                                        html.P("Zone placeholder (graphique + export)."),
+                                        html.P("JSON du schema valide (debug temporaire):"),
+                                        html.Pre(id="v2r-json-preview", style={"whiteSpace": "pre-wrap", "fontSize": "0.82rem"}),
                                     ],
                                     style={
                                         "border": "1px solid #ddd",
@@ -210,13 +256,13 @@ def build_layout():
                                     },
                                 ),
                             ],
-                            style={"gridColumn": "2", "gridRow": "2"},
+                            style={"gridColumn": "2", "gridRow": "3"},
                         ),
                     ],
                     style={
                         "display": "grid",
                         "gridTemplateColumns": "1fr 1fr",
-                        "gridTemplateRows": "auto auto",
+                        "gridTemplateRows": "auto auto auto",
                         "gap": "12px",
                         "alignItems": "start",
                     },

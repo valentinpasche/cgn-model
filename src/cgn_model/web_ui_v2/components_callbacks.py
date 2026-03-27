@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+import yaml
 
 from dash import Input, Output, State, html, no_update
 from dash_pydantic_form import ModelForm
@@ -274,6 +275,62 @@ def _check_schema_constraints_for_validate(schema_store: dict[str, Any]) -> tupl
     return (msg.startswith("Validation OK"), msg)
 
 
+def _build_schema_bundle(current_schema: dict[str, Any]) -> dict[str, Any]:
+    schema_name = str(current_schema.get("name", "")).strip()
+    component_names = _schema_components_list(current_schema)
+    components: list[dict[str, Any]] = []
+    for comp_name in component_names:
+        t = get_template_by_name(comp_name)
+        if not isinstance(t, dict):
+            continue
+        components.append(
+            {
+                "name": str(t.get("name", comp_name)),
+                "component_type": str(t.get("component_type", "")),
+                "kind": str(t.get("kind", "")),
+                "payload": t.get("payload", {}),
+            }
+        )
+    return {"schema": {"name": schema_name, "components": component_names}, "components": components}
+
+
+def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
+    schema = bundle.get("schema", {}) if isinstance(bundle, dict) else {}
+    components = bundle.get("components", []) if isinstance(bundle, dict) else []
+    schema_name = str(schema.get("name", "schema_ui_v2")).strip() or "schema_ui_v2"
+
+    out: dict[str, Any] = {
+        "vessel": {"name": schema_name, "vessel_type": "undefined"},
+        "simulation": {"dt": 1.0},
+        "profiles": [],
+        "adapters": [],
+        "inputs": [],
+        "solver": {"mode": "inverse"},
+        "buses": [],
+        "converters": [],
+        "storages": [],
+    }
+
+    for item in components if isinstance(components, list) else []:
+        if not isinstance(item, dict):
+            continue
+        ctype = str(item.get("component_type", "")).strip()
+        payload = item.get("payload", {})
+        comp = payload.get("component", {}) if isinstance(payload, dict) else {}
+        if not isinstance(comp, dict):
+            continue
+        if ctype == "profile":
+            out["profiles"].append(comp)
+        elif ctype == "adapter":
+            out["adapters"].append(comp)
+        elif ctype == "converter":
+            out["converters"].append(comp)
+        elif ctype == "storage":
+            out["storages"].append(comp)
+
+    return out
+
+
 def register_callbacks(app):
     def _next_rev(rev: int | None) -> int:
         return int(rev or 0) + 1
@@ -287,6 +344,30 @@ def register_callbacks(app):
     )
     def manual_refresh(_: int, __: int, rev: int | None):
         return _next_rev(rev)
+
+    @app.callback(
+        Output("v2s-current", "data", allow_duplicate=True),
+        Output("v2s-select", "value", allow_duplicate=True),
+        Output("v2s-status", "children", allow_duplicate=True),
+        Output("v2c-json-store", "data", allow_duplicate=True),
+        Output("v2c-yaml-store", "data", allow_duplicate=True),
+        Output("v2c-status", "children", allow_duplicate=True),
+        Input("v2s-refresh", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def reset_schema_state(_: int):
+        return {"name": "", "components": []}, None, "Schema reinitialise.", {}, {}, ""
+
+    @app.callback(
+        Output("v2m-form-seed", "data", allow_duplicate=True),
+        Output("v2m-select", "value", allow_duplicate=True),
+        Output("v2m-status", "children", allow_duplicate=True),
+        Output("v2m-reset-guard", "data", allow_duplicate=True),
+        Input("v2db-refresh", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def reset_component_state(_: int):
+        return {}, None, "Nouveau composant: formulaire reinitialise.", False
 
     @app.callback(
         Output("v2s-form-container", "children"),
@@ -445,6 +526,7 @@ def register_callbacks(app):
 
     @app.callback(
         Output("v2s-status", "children", allow_duplicate=True),
+        Output("v2c-json-store", "data"),
         Input("v2s-validate", "n_clicks"),
         State("v2s-current", "data"),
         prevent_initial_call=True,
@@ -453,13 +535,74 @@ def register_callbacks(app):
         current = current_schema if isinstance(current_schema, dict) else {"name": "", "components": []}
         ok, msg = _check_schema_constraints_for_validate(current)
         if not ok:
-            return msg
+            return msg, no_update
         name = str(current.get("name", "")).strip()
         if not name:
-            return "Validation echec: nom du schema requis."
+            return "Validation echec: nom du schema requis.", no_update
         if any(str(r.get("name", "")) == name for r in list_schemas()):
-            return f"Attention: le nom '{name}' existe deja."
-        return "Validation OK: schema coherent."
+            return f"Attention: le nom '{name}' existe deja.", _build_schema_bundle(current)
+        return "Validation OK: schema coherent.", _build_schema_bundle(current)
+
+    @app.callback(
+        Output("v2c-status", "children"),
+        Output("v2c-yaml-store", "data"),
+        Input("v2c-compile", "n_clicks"),
+        State("v2c-json-store", "data"),
+        prevent_initial_call=True,
+    )
+    def compile_bundle(_: int, bundle: dict[str, Any] | None):
+        if not isinstance(bundle, dict) or not bundle:
+            return "Aucun JSON valide a compiler. Lance d'abord 'Valider' sur le schema.", no_update
+        try:
+            compiled = _compile_bundle_to_yaml(bundle)
+            return "Compilation OK.", compiled
+        except Exception as exc:  # noqa: BLE001
+            return f"Compilation echec: {exc}", no_update
+
+    @app.callback(
+        Output("v2c-json-modal", "opened"),
+        Output("v2c-json-content", "children"),
+        Input("v2c-show-json", "n_clicks"),
+        State("v2c-json-store", "data"),
+        prevent_initial_call=True,
+    )
+    def show_json(_: int, bundle: dict[str, Any] | None):
+        text = json.dumps(bundle or {}, ensure_ascii=False, indent=2, sort_keys=True)
+        return True, text
+
+    @app.callback(
+        Output("v2c-yaml-modal", "opened"),
+        Output("v2c-yaml-content", "children"),
+        Input("v2c-show-yaml", "n_clicks"),
+        State("v2c-yaml-store", "data"),
+        prevent_initial_call=True,
+    )
+    def show_yaml(_: int, compiled: dict[str, Any] | None):
+        text = yaml.safe_dump(compiled or {}, allow_unicode=True, sort_keys=False)
+        return True, text
+
+    @app.callback(
+        Output("v2r-json-preview", "children"),
+        Input("v2c-json-store", "data"),
+    )
+    def update_json_preview(bundle: dict[str, Any] | None):
+        return json.dumps(bundle or {}, ensure_ascii=False, indent=2, sort_keys=True)
+
+    @app.callback(
+        Output("v2c-json-modal", "opened", allow_duplicate=True),
+        Input("v2c-json-close", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def close_json_modal(_: int):
+        return False
+
+    @app.callback(
+        Output("v2c-yaml-modal", "opened", allow_duplicate=True),
+        Input("v2c-yaml-close", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def close_yaml_modal(_: int):
+        return False
 
     @app.callback(
         Output("v2m-select", "options"),
@@ -550,22 +693,42 @@ def register_callbacks(app):
         Output("v2m-model", "value", allow_duplicate=True),
         Output("v2m-form-seed", "data", allow_duplicate=True),
         Output("v2m-status", "children", allow_duplicate=True),
+        Output("v2m-reset-guard", "data", allow_duplicate=True),
         Input("v2m-load-edit", "n_clicks"),
         State("v2m-select", "value"),
         prevent_initial_call=True,
     )
     def load_edit(_: int, selected_name: str | None):
         if not selected_name:
-            return no_update, no_update, no_update, "Selectionne un composant a editer."
+            return no_update, no_update, no_update, "Selectionne un composant a editer.", no_update
         t = get_template_by_name(selected_name)
         if t is None:
-            return no_update, no_update, no_update, "Composant DB introuvable."
+            return no_update, no_update, no_update, "Composant DB introuvable.", no_update
         ctype = str(t.get("component_type", ""))
         kind = str(t.get("kind", ""))
         model_key, seed = seed_from_template(ctype, kind, t.get("payload", {}))
         if model_key is None:
-            return no_update, no_update, no_update, "Type/Kind non supporte par ce formulaire."
-        return ctype, model_key, seed, f"Edition chargee: {selected_name}"
+            return no_update, no_update, no_update, "Type/Kind non supporte par ce formulaire.", no_update
+        return ctype, model_key, seed, f"Edition chargee: {selected_name}", True
+
+    @app.callback(
+        Output("v2m-form-seed", "data", allow_duplicate=True),
+        Output("v2m-select", "value", allow_duplicate=True),
+        Output("v2m-status", "children", allow_duplicate=True),
+        Output("v2m-reset-guard", "data", allow_duplicate=True),
+        Input("v2m-type", "value"),
+        Input("v2m-model", "value"),
+        State("v2m-reset-guard", "data"),
+        prevent_initial_call=True,
+    )
+    def reset_form_on_type_model_change(
+        _: str | None,
+        __: str | None,
+        reset_guard: bool | None,
+    ):
+        if bool(reset_guard):
+            return no_update, no_update, no_update, False
+        return {}, None, "Nouveau composant: formulaire reinitialise.", False
 
     @app.callback(
         Output("v2m-status", "children"),
