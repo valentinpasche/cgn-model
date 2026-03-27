@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dash import Dash, dcc, html, page_container
 
-from services.db import init_db
+from cgn_model.web_mvp.services.db import init_db
 
 
 def build_app() -> Dash:

@@ -9,7 +9,7 @@ from dash import html
 from dash_pydantic_form import ModelForm, fields
 from pydantic import BaseModel
 
-from components_basemodel import (
+from cgn_model.web_ui_v2.components_basemodel import (
     COURSES_NUMBER,
     ConstantProfile,
     ConstantEtaConverter,
@@ -26,7 +26,7 @@ from components_basemodel import (
     SpeedToPowerPolyAdapter,
     VariableEtaConverter,
 )
-from services.storage import list_schemas, list_templates
+from cgn_model.web_ui_v2.services.storage import list_schemas, list_templates
 
 
 TYPE_OPTIONS = [

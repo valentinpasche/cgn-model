@@ -11,9 +11,9 @@ from dash_extensions import Mermaid
 import plotly.express as px
 import plotly.graph_objects as go
 
-from services.dag_mermaid import yaml_to_mermaid
-from services.db import get_vessel_config, list_vessel_configs
-from services.simulation import run_simulation_from_yaml
+from cgn_model.web_mvp.services.dag_mermaid import yaml_to_mermaid
+from cgn_model.web_mvp.services.db import get_vessel_config, list_vessel_configs
+from cgn_model.web_mvp.services.simulation import run_simulation_from_yaml
 
 register_page(__name__, path="/simulation", name="Simulation")
 

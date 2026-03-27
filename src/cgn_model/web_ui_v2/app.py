@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dash import Dash
 
-from components_callbacks import register_callbacks
-from components_layout import build_layout
-from services.storage import init_db
+from cgn_model.web_ui_v2.components_callbacks import register_callbacks
+from cgn_model.web_ui_v2.components_layout import build_layout
+from cgn_model.web_ui_v2.services.storage import init_db
 
 
 init_db()

@@ -10,8 +10,8 @@ from dash import Input, Output, State, html, no_update
 from dash_pydantic_form import ModelForm
 from pydantic import ValidationError
 
-from components_basemodel import COURSES_NUMBER
-from components_registry import (
+from cgn_model.web_ui_v2.components_basemodel import COURSES_NUMBER
+from cgn_model.web_ui_v2.components_registry import (
     AIO_ID,
     FORM_ID,
     SCHEMA_AIO_ID,
@@ -25,7 +25,7 @@ from components_registry import (
     seed_from_template,
     validate_form_data,
 )
-from services.storage import (
+from cgn_model.web_ui_v2.services.storage import (
     delete_schema,
     delete_template,
     get_template_by_name,

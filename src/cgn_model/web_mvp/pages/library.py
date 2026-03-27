@@ -11,7 +11,7 @@ import re
 from dash import Input, Output, State, callback, ctx, dcc, html, no_update, register_page
 from dash.exceptions import PreventUpdate
 
-from services.db import (
+from cgn_model.web_mvp.services.db import (
     delete_component_template,
     delete_vessel_config,
     get_component_template,
@@ -23,7 +23,7 @@ from services.db import (
     upsert_component_template,
     upsert_vessel_config,
 )
-from services.default_yaml import load_default_yaml
+from cgn_model.web_mvp.services.default_yaml import load_default_yaml
 
 register_page(__name__, path="/library", name="Bibliotheque")
 
@@ -42,7 +42,7 @@ def _load_docs_markdown() -> str:
     Charge la doc YAML projet pour l'afficher en aide rapide dans la bibliotheque.
     """
     try:
-        root = Path(__file__).resolve().parents[3]
+        root = Path(__file__).resolve().parents[4]
         yaml_guide = (root / "docs" / "yaml_guide.md").read_text(encoding="utf-8")
         # Evite que des annotations de type comme `list[float]` soient lues comme des liens Markdown.
         yaml_guide = re.sub(

@@ -6,7 +6,12 @@ import dash_mantine_components as dmc
 from dash import dcc, html
 from dash_extensions import Mermaid
 
-from components_registry import TYPE_OPTIONS, model_options, render_form, render_schema_form
+from cgn_model.web_ui_v2.components_registry import (
+    TYPE_OPTIONS,
+    model_options,
+    render_form,
+    render_schema_form,
+)
 
 
 def build_layout():

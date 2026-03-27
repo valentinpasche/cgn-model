@@ -14,8 +14,8 @@ from dash.exceptions import PreventUpdate
 from dash_extensions import Mermaid
 
 from cgn_model.vessel_model import Vessel
-from services.dag_mermaid import yaml_to_mermaid
-from services.db import (
+from cgn_model.web_mvp.services.dag_mermaid import yaml_to_mermaid
+from cgn_model.web_mvp.services.db import (
     get_component_template,
     get_vessel_config,
     list_component_templates,
