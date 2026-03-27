@@ -29,6 +29,7 @@ def build_layout():
                 dcc.Store(id="v2s-current", data={"name": "", "components": []}),
                 dcc.Store(id="v2c-json-store", data={}),
                 dcc.Store(id="v2c-yaml-store", data={}),
+                dcc.Store(id="v2sim-last-run", data={}),
                 dmc.Modal(
                     id="v2m-update-modal",
                     title="Confirmation mise a jour",
@@ -147,39 +148,33 @@ def build_layout():
                                         ),
                                         html.Div(id="v2s-status", style={"marginTop": "8px"}),
                                     ],
-                                    style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
+                                    style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "height": "100%"},
                                 ),
                             ],
-                            style={"gridColumn": "1", "gridRow": "1"},
+                            style={"gridColumn": "1", "gridRow": "1", "display": "flex"},
                         ),
-                        # Haut droite: compilation (temporaire dev)
+                        # Haut droite: visualisation + compilation
                         html.Div(
                             [
-                                html.H3("Compilation", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
+                                html.H3("Visualisation - Compilation - Simulation", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                                 html.Div(
                                     [
-                                        html.Button("JSON", id="v2c-show-json", n_clicks=0),
-                                        html.Button("Compiler", id="v2c-compile", n_clicks=0, style={"marginLeft": "8px"}),
-                                        html.Button("YAML", id="v2c-show-yaml", n_clicks=0, style={"marginLeft": "8px"}),
-                                        html.Div(id="v2c-status", style={"marginTop": "8px"}),
-                                    ],
-                                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
-                                ),
-                            ],
-                            style={"gridColumn": "2", "gridRow": "1"},
-                        ),
-                        # Milieu droite: visualisation
-                        html.Div(
-                            [
-                                html.H3("Visualisation - Schema fonctionnel", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
-                                html.Div(
-                                    [
+                                        html.Div(
+                                            [
+                                                html.Button("JSON", id="v2c-show-json", n_clicks=0),
+                                                html.Button("Compiler", id="v2c-compile", n_clicks=0, style={"marginLeft": "8px"}),
+                                                html.Button("YAML", id="v2c-show-yaml", n_clicks=0, style={"marginLeft": "8px"}),
+                                                html.Button("Simuler", id="v2c-simulate", n_clicks=0, style={"marginLeft": "8px"}),
+                                            ],
+                                            style={"marginBottom": "8px"},
+                                        ),
+                                        html.Div(id="v2c-status", style={"marginBottom": "8px"}),
                                         html.Div(
                                             dcc.RadioItems(
                                                 id="v2cfg-view-mode",
                                                 options=[
-                                                    {"label": "Schema en cours", "value": "simple"},
-                                                    {"label": "Configuration compilee", "value": "yaml"},
+                                                    {"label": "Schéma en cours", "value": "simple"},
+                                                    {"label": "Configuration compilée", "value": "yaml"},
                                                 ],
                                                 value="simple",
                                                 inline=True,
@@ -198,10 +193,10 @@ def build_layout():
                                             style={"minHeight": "360px"},
                                         ),
                                     ],
-                                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
+                                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "height": "100%"},
                                 ),
                             ],
-                            style={"gridColumn": "2", "gridRow": "2"},
+                            style={"gridColumn": "2", "gridRow": "1", "display": "flex"},
                         ),
                         # Bas gauche: composants
                         html.Div(
@@ -237,7 +232,7 @@ def build_layout():
                                     style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
                                 ),
                             ],
-                            style={"gridColumn": "1", "gridRow": "2 / span 2"},
+                            style={"gridColumn": "1", "gridRow": "2"},
                         ),
                         # Bas droite: resultats placeholder
                         html.Div(
@@ -246,6 +241,7 @@ def build_layout():
                                 html.Div(
                                     [
                                         html.P("Zone placeholder (graphique + export)."),
+                                        html.Div(id="v2r-sim-summary", style={"marginTop": "8px"}),
                                     ],
                                     style={
                                         "border": "1px solid #ddd",
@@ -256,15 +252,15 @@ def build_layout():
                                     },
                                 ),
                             ],
-                            style={"gridColumn": "2", "gridRow": "3"},
+                            style={"gridColumn": "2", "gridRow": "2"},
                         ),
                     ],
                     style={
                         "display": "grid",
                         "gridTemplateColumns": "1fr 1fr",
-                        "gridTemplateRows": "auto auto auto",
+                        "gridTemplateRows": "auto auto",
                         "gap": "12px",
-                        "alignItems": "start",
+                        "alignItems": "stretch",
                     },
                 ),
             ],

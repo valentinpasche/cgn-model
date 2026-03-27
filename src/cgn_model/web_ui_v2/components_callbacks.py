@@ -12,6 +12,7 @@ from dash_pydantic_form import ModelForm
 from pydantic import ValidationError
 
 from cgn_model.web_mvp.services.dag_mermaid import yaml_to_mermaid
+from cgn_model.web_mvp.services.simulation import run_simulation_from_yaml
 from cgn_model.web_ui_v2.components_basemodel import COURSES_NUMBER
 from cgn_model.web_ui_v2.components_registry import (
     AIO_ID,
@@ -143,7 +144,12 @@ def _schema_edges(schema_components: list[str]) -> list[tuple[str, str]]:
 
 def _schema_to_mermaid(schema_components: list[str], catalog: dict[str, dict[str, Any]]) -> str:
     if not schema_components:
-        return 'flowchart LR\n  n0["Schema vide"]'
+        return (
+            "flowchart LR\n"
+            "  n0[/Schéma vide/]\n"
+            "  classDef error fill:#ffebee,stroke:#c62828,stroke-width:2.4px,stroke-dasharray:8 5,color:#b71c1c,font-size:22px,font-weight:bold;\n"
+            "  class n0 error;"
+        )
 
     def sanitize(raw: str) -> str:
         cleaned = re.sub(r"[^0-9a-zA-Z_]", "_", raw)
@@ -557,9 +563,19 @@ def register_callbacks(app):
                         flow_direction="LR",
                     )
                 except Exception:
-                    mermaid = 'flowchart LR\n  n0["Erreur rendu YAML"]'
+                    mermaid = (
+                        "flowchart LR\n"
+                        "  n0[/Erreur rendu YAML/]\n"
+                        "  classDef error fill:#ffebee,stroke:#c62828,stroke-width:2.4px,stroke-dasharray:8 5,color:#b71c1c,font-size:22px,font-weight:bold;\n"
+                        "  class n0 error;"
+                    )
             else:
-                mermaid = 'flowchart LR\n  n0["YAML pas compile"]'
+                mermaid = (
+                    "flowchart LR\n"
+                    "  n0[/YAML pas compilé/]\n"
+                    "  classDef error fill:#ffebee,stroke:#c62828,stroke-width:2.4px,stroke-dasharray:8 5,color:#b71c1c,font-size:22px,font-weight:bold;\n"
+                    "  class n0 error;"
+                )
         else:
             comps = _schema_components_list(current)
             mermaid = _schema_to_mermaid(comps, _catalog())
@@ -698,7 +714,7 @@ def register_callbacks(app):
         return "Validation OK: schema coherent.", _build_schema_bundle(current)
 
     @app.callback(
-        Output("v2c-status", "children"),
+        Output("v2c-status", "children", allow_duplicate=True),
         Output("v2c-yaml-store", "data"),
         Input("v2c-compile", "n_clicks"),
         State("v2c-json-store", "data"),
@@ -709,9 +725,52 @@ def register_callbacks(app):
             return "Aucun JSON valide a compiler. Lance d'abord 'Valider' sur le schema.", no_update
         try:
             compiled = _compile_bundle_to_yaml(bundle)
+            n_profiles = len(compiled.get("profiles", []) or [])
+            n_converters = len(compiled.get("converters", []) or [])
+            if n_profiles < 1 or n_converters < 1:
+                return (
+                    "Compilation echec: il faut au minimum 1 profil et 1 convertisseur.",
+                    no_update,
+                )
             return "Compilation OK.", compiled
         except Exception as exc:  # noqa: BLE001
             return f"Compilation echec: {exc}", no_update
+
+    @app.callback(
+        Output("v2c-status", "children", allow_duplicate=True),
+        Output("v2r-sim-summary", "children"),
+        Output("v2sim-last-run", "data"),
+        Input("v2c-simulate", "n_clicks"),
+        State("v2c-yaml-store", "data"),
+        prevent_initial_call=True,
+    )
+    def simulate_from_compiled(_: int, compiled: dict[str, Any] | None):
+        if not isinstance(compiled, dict) or not compiled:
+            return "Simulation refusee: compile d'abord une configuration YAML valide.", no_update, no_update
+
+        n_profiles = len(compiled.get("profiles", []) or [])
+        n_converters = len(compiled.get("converters", []) or [])
+        if n_profiles < 1 or n_converters < 1:
+            return "Simulation refusee: minimum 1 profil et 1 convertisseur requis.", no_update, no_update
+
+        try:
+            yaml_text = yaml.safe_dump(compiled, allow_unicode=True, sort_keys=False)
+            out = run_simulation_from_yaml(yaml_text)
+            summary = html.Div(
+                [
+                    html.H4("Derniere simulation", style={"marginTop": "0", "marginBottom": "6px"}),
+                    html.Div(f"Lignes: {out.n_rows}"),
+                    html.Div(f"Colonnes: {len(out.columns)}"),
+                ]
+            )
+            meta = {
+                "n_rows": out.n_rows,
+                "n_cols": len(out.columns),
+                "columns": out.columns,
+            }
+            return "Simulation OK.", summary, meta
+        except Exception as exc:  # noqa: BLE001
+            return f"Simulation echec: {exc}", no_update, no_update
 
     @app.callback(
         Output("v2c-json-modal", "opened"),
