@@ -26,3 +26,6 @@ exclude = ["tests*", "docs*", "examples*", "build*", "dist*"]
 [project.urls]
 Repository = "https://github.com/valentinpasche/cgn-model"
 
+[project.scripts]
+cgnmodel-mvp = "cgn_model.web_mvp.app:main"
+cgnmodel-gui = "cgn_model.web_ui_v2.app:main"

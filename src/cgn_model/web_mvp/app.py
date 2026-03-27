@@ -86,5 +86,9 @@ def build_app() -> Dash:
 app = build_app()
 
 
-if __name__ == "__main__":
+def main() -> None:
     app.run(debug=True)
+
+
+if __name__ == "__main__":
+    main()

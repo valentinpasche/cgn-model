@@ -16,5 +16,9 @@ app.layout = build_layout()
 register_callbacks(app)
 
 
-if __name__ == "__main__":
+def main() -> None:
     app.run(debug=True)
+
+
+if __name__ == "__main__":
+    main()
