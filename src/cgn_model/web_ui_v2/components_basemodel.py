@@ -41,6 +41,9 @@ def _register_speed_units() -> None:
 _register_speed_units()
 
 
+default_repr_kwargs = {"decimalScale": 2, "thousandSeparator": "'"}
+
+
 class VariableEtaConverter(BaseModel):
     """
     Convertisseur a rendement variable, eta(t)
@@ -267,8 +270,6 @@ class SpeedToForcePoly(BaseModel):
     )
 
 
-default_repr_kwargs = {"decimalScale": 2, "thousandSeparator": "'"}
-
 class EnergyVectorParams(BaseModel):
     pci_basis: Literal["volume", "mass"] = Field(
         title="Type de PCI",
@@ -450,7 +451,7 @@ class ConstantProfile(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
     unit: str = Field(title="Unité du profil", description="Unité de la valeur constante.")
-    value: float = Field(title="Valeur", default_factory=float)
+    value: float = Field(title="Valeur", default_factory=float, json_schema_extra={"repr_kwargs": {**default_repr_kwargs}})
 
 class SeriesProfile(BaseModel):
     """
@@ -458,7 +459,14 @@ class SeriesProfile(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
     unit: str = Field(title="Unité du profil", description="Unité de la série de valeurs.")
-    data: list[float] = Field(title="Liste de valeur", min_length=1, default_factory=list, validate_default=True, description="e.g., 45.90 | 48.0 | 50.2 | 41.02| 32.0")
+    data: list[float] = Field(
+        title="Liste de valeur",
+        min_length=1, 
+        default_factory=list,
+        validate_default=True,
+        json_schema_extra={"repr_kwargs": {**default_repr_kwargs}},
+        description="e.g., 45.90 | 48.0 | 50.2 | 41.02| 32.0",
+    )
 
 class FileProfile(BaseModel):
     """
