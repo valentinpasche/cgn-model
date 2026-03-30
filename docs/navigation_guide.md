@@ -55,6 +55,13 @@ Champs principaux (si non fournis, valeurs par defaut) :
 - `v_moyenne_horaire` : optionnel, controle macro de la vitesse moyenne [m/s]
 - `allow_delay` : si false, le profil doit respecter strictement l'horaire
 
+Contrainte d'unites :
+- profil `nav_speed.unit` : `m/s`
+- `acc` / `dec` : `m/s^2`
+- `v_croisiere` : `m/s`
+
+Ces contraintes sont volontaires pour garder une saisie simple et coherente (SI) dans l'interface.
+
 Exemple YAML :
 ```yaml
 - id: "speed"

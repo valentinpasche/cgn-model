@@ -30,6 +30,8 @@ def build_layout():
                 dcc.Store(id="v2c-json-store", data={}),
                 dcc.Store(id="v2c-yaml-store", data={}),
                 dcc.Store(id="v2sim-last-run", data={}),
+                dcc.Store(id="v2sim-df-store", data={}),
+                dcc.Download(id="v2r-csv-download"),
                 dmc.Modal(
                     id="v2m-update-modal",
                     title="Confirmation mise a jour",
@@ -148,10 +150,10 @@ def build_layout():
                                         ),
                                         html.Div(id="v2s-status", style={"marginTop": "8px"}),
                                     ],
-                                    style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "height": "100%"},
+                                    style={"width": "100%", "border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px"},
                                 ),
                             ],
-                            style={"gridColumn": "1", "gridRow": "1", "display": "flex"},
+                            style={"gridColumn": "1", "gridRow": "1"},
                         ),
                         # Haut droite: visualisation + compilation
                         html.Div(
@@ -193,10 +195,10 @@ def build_layout():
                                             style={"minHeight": "360px"},
                                         ),
                                     ],
-                                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "height": "100%"},
+                                    style={"border": "1px solid #ddd", "borderRadius": "8px", "padding": "10px", "minHeight": "640px"},
                                 ),
                             ],
-                            style={"gridColumn": "2", "gridRow": "1", "display": "flex"},
+                            style={"gridColumn": "2", "gridRow": "1"},
                         ),
                         # Bas gauche: composants
                         html.Div(
@@ -240,14 +242,42 @@ def build_layout():
                                 html.H3("Resultats", style={"fontSize": "1.35rem", "marginBottom": "6px"}),
                                 html.Div(
                                     [
-                                        html.P("Zone placeholder (graphique + export)."),
                                         html.Div(id="v2r-sim-summary", style={"marginTop": "8px"}),
+                                        html.Hr(),
+                                        html.Label("Colonnes a afficher / exporter"),
+                                        dcc.Dropdown(
+                                            id="v2r-cols",
+                                            options=[],
+                                            value=[],
+                                            multi=True,
+                                            placeholder="Selectionner les colonnes du resultat",
+                                            style={"marginBottom": "8px"},
+                                        ),
+                                        html.Div(
+                                            [
+                                                html.Button("Exporter CSV", id="v2r-export-csv", n_clicks=0),
+                                            ],
+                                            style={"marginBottom": "8px"},
+                                        ),
+                                        dcc.Graph(
+                                            id="v2r-graph",
+                                            figure={
+                                                "data": [],
+                                                "layout": {
+                                                    "title": "Aucun resultat de simulation",
+                                                    "template": "plotly_white",
+                                                    "height": 320,
+                                                },
+                                            },
+                                            config={"displaylogo": False, "responsive": True},
+                                            style={"height": "320px"},
+                                        ),
                                     ],
                                     style={
                                         "border": "1px solid #ddd",
                                         "borderRadius": "8px",
                                         "padding": "10px",
-                                        "minHeight": "360px",
+                                        "minHeight": "460px",
                                         "backgroundColor": "#fafafa",
                                     },
                                 ),
@@ -260,7 +290,7 @@ def build_layout():
                         "gridTemplateColumns": "1fr 1fr",
                         "gridTemplateRows": "auto auto",
                         "gap": "12px",
-                        "alignItems": "stretch",
+                        "alignItems": "start",
                     },
                 ),
             ],

@@ -59,6 +59,15 @@ Champs communs :
 - unit (str) : unite declaree
 - master (bool, optionnel) : profil maitre (definit N)
 
+Unites autorisees dans l'UI (profiles, usage general) :
+- puissance : "W" | "kW" | "MW" | "GW"
+- vitesse : "m/s" | "km/h" | "kn"
+- force : "N" | "kN" | "MN" | "GN"
+
+Note :
+- Le code metier peut accepter davantage d'alias/unites selon les composants.
+- Pour l'UI, la liste ci-dessus est volontairement restreinte pour limiter les erreurs utilisateur.
+
 #### kind = constant
 Champs :
 - value (float | list[float]) : valeur constante (len=1) ou serie de taille N
@@ -121,6 +130,11 @@ Champs :
   - dec (float)
   - v_croisiere (float)
   - allow_delay (bool)
+
+Contrainte d'unites :
+- `unit` du profil `nav_speed` : "m/s" (SI)
+- `params.acc` et `params.dec` : en `m/s^2` (SI)
+- `params.v_croisiere` : en `m/s` (SI)
 
 Exemple :
 ```yaml

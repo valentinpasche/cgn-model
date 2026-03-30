@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from typing import Any
 import yaml
+import pandas as pd
+import plotly.graph_objects as go
 
-from dash import Input, Output, State, html, no_update
+from dash import Input, Output, State, dcc, html, no_update
 from dash_pydantic_form import ModelForm
 from pydantic import ValidationError
 
@@ -456,6 +459,9 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
             out["converters"].append(conv)
         elif ctype == "storage":
             storage = dict(comp)
+            # Champs UI internes/non metier: interdits par Vessel StorageCfg (extra="forbid").
+            storage.pop("kind", None)
+            storage.pop("vector_kind", None)
             storage_id = str(storage.get("id", "")).strip()
             bus = _bus_id(storage_id) if storage_id else ""
             if bus:
@@ -466,9 +472,117 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _default_result_columns(columns: list[str], profile_ids: list[str] | None = None) -> list[str]:
+    cols = [str(c) for c in (columns or [])]
+    if not cols:
+        return []
+    profile_ids = [str(x) for x in (profile_ids or []) if str(x).strip()]
+
+    def _pick_time() -> list[str]:
+        preferred = ["time", "t", "time_s", "time [s]", "time[s]"]
+        for p in preferred:
+            for c in cols:
+                if c.lower() == p:
+                    return [c]
+        for c in cols:
+            lc = c.lower()
+            if "time" in lc or lc.endswith("_s"):
+                return [c]
+        return []
+
+    out: list[str] = []
+    out.extend(_pick_time())
+
+    # Colonnes proches des profils (ex: id profil visible dans le nom de colonne).
+    for pid in profile_ids:
+        for c in cols:
+            if c in out:
+                continue
+            lc = c.lower()
+            lp = pid.lower()
+            if lc == lp or lc.startswith(lp) or lp in lc:
+                out.append(c)
+
+    # Fallback court pour eviter 30 courbes par defaut.
+    if len(out) < 2:
+        for c in cols:
+            if c not in out:
+                out.append(c)
+            if len(out) >= min(6, len(cols)):
+                break
+
+    return out
+
+
+def _build_result_figure(rows: list[dict[str, Any]], selected_cols: list[str]) -> go.Figure:
+    fig = go.Figure()
+    if not rows or not selected_cols:
+        fig.update_layout(
+            template="plotly_white",
+            title="Aucune colonne selectionnee",
+            height=320,
+            margin={"l": 40, "r": 20, "t": 45, "b": 40},
+        )
+        return fig
+
+    df = pd.DataFrame(rows)
+    cols = [c for c in selected_cols if c in df.columns]
+    if not cols:
+        fig.update_layout(
+            template="plotly_white",
+            title="Selection invalide (colonnes absentes)",
+            height=320,
+            margin={"l": 40, "r": 20, "t": 45, "b": 40},
+        )
+        return fig
+
+    time_col = None
+    for cand in ["time", "t", "time_s", "time [s]", "time[s]"]:
+        if cand in cols:
+            time_col = cand
+            break
+    if time_col is None:
+        for c in cols:
+            lc = c.lower()
+            if "time" in lc or lc.endswith("_s"):
+                time_col = c
+                break
+
+    if time_col and time_col in df.columns:
+        x = df[time_col]
+        y_cols = [c for c in cols if c != time_col]
+        x_title = time_col
+    else:
+        x = list(range(len(df)))
+        y_cols = cols
+        x_title = "Index"
+
+    for c in y_cols:
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=df[c],
+                mode="lines",
+                name=c,
+            )
+        )
+
+    fig.update_layout(
+        template="plotly_white",
+        title="Resultats simulation",
+        height=320,
+        margin={"l": 40, "r": 20, "t": 45, "b": 40},
+        legend={"orientation": "v", "x": 1.01, "xanchor": "left", "y": 1.0},
+    )
+    fig.update_xaxes(title_text=x_title)
+    return fig
+
+
 def register_callbacks(app):
     def _next_rev(rev: int | None) -> int:
         return int(rev or 0) + 1
+    
+    si_hint = " Normalisation SI appliquée (Quantity): NavParams, PCI, niveaux initiaux."
 
     @app.callback(
         Output("v2db-rev", "data"),
@@ -740,22 +854,27 @@ def register_callbacks(app):
         Output("v2c-status", "children", allow_duplicate=True),
         Output("v2r-sim-summary", "children"),
         Output("v2sim-last-run", "data"),
+        Output("v2sim-df-store", "data"),
         Input("v2c-simulate", "n_clicks"),
         State("v2c-yaml-store", "data"),
         prevent_initial_call=True,
     )
     def simulate_from_compiled(_: int, compiled: dict[str, Any] | None):
         if not isinstance(compiled, dict) or not compiled:
-            return "Simulation refusee: compile d'abord une configuration YAML valide.", no_update, no_update
+            return "Simulation refusee: compile d'abord une configuration YAML valide.", no_update, no_update, no_update
 
         n_profiles = len(compiled.get("profiles", []) or [])
         n_converters = len(compiled.get("converters", []) or [])
         if n_profiles < 1 or n_converters < 1:
-            return "Simulation refusee: minimum 1 profil et 1 convertisseur requis.", no_update, no_update
+            return "Simulation refusee: minimum 1 profil et 1 convertisseur requis.", no_update, no_update, no_update
 
         try:
             yaml_text = yaml.safe_dump(compiled, allow_unicode=True, sort_keys=False)
             out = run_simulation_from_yaml(yaml_text)
+            df_export = out.dataframe.where(pd.notna(out.dataframe), None)
+            rows = df_export.to_dict(orient="records")
+            profile_ids = [str(p.get("id", "")).strip() for p in (compiled.get("profiles", []) or []) if isinstance(p, dict)]
+            default_cols = _default_result_columns(out.columns, profile_ids=profile_ids)
             summary = html.Div(
                 [
                     html.H4("Derniere simulation", style={"marginTop": "0", "marginBottom": "6px"}),
@@ -768,9 +887,78 @@ def register_callbacks(app):
                 "n_cols": len(out.columns),
                 "columns": out.columns,
             }
-            return "Simulation OK.", summary, meta
+            df_store = {
+                "columns": out.columns,
+                "rows": rows,
+                "default_columns": default_cols,
+                "selected_columns": default_cols,
+            }
+            return "Simulation OK.", summary, meta, df_store
         except Exception as exc:  # noqa: BLE001
-            return f"Simulation echec: {exc}", no_update, no_update
+            return f"Simulation echec: {exc}", no_update, no_update, no_update
+
+    @app.callback(
+        Output("v2r-cols", "options"),
+        Output("v2r-cols", "value"),
+        Input("v2sim-df-store", "data"),
+    )
+    def init_results_columns(df_store: dict[str, Any] | None):
+        if not isinstance(df_store, dict) or not df_store:
+            return [], []
+
+        columns = [str(c) for c in (df_store.get("columns", []) or [])]
+        options = [{"label": c, "value": c} for c in columns]
+        selected = [str(c) for c in (df_store.get("default_columns", []) or []) if str(c) in set(columns)]
+        if not selected:
+            selected = columns[: min(6, len(columns))]
+        return options, selected
+
+    @app.callback(
+        Output("v2r-graph", "figure"),
+        Input("v2sim-df-store", "data"),
+        Input("v2r-cols", "value"),
+    )
+    def refresh_results_graph(df_store: dict[str, Any] | None, selected: list[str] | None):
+        if not isinstance(df_store, dict) or not df_store:
+            fig = _build_result_figure([], [])
+            return fig
+
+        columns = [str(c) for c in (df_store.get("columns", []) or [])]
+        rows = df_store.get("rows", []) or []
+
+        selected_clean = [str(c) for c in (selected or []) if str(c) in set(columns)]
+        if not selected_clean:
+            selected_clean = [str(c) for c in (df_store.get("default_columns", []) or []) if str(c) in set(columns)]
+        if not selected_clean:
+            selected_clean = columns[: min(6, len(columns))]
+
+        fig = _build_result_figure(rows, selected_clean)
+        return fig
+
+    @app.callback(
+        Output("v2r-csv-download", "data"),
+        Output("v2c-status", "children", allow_duplicate=True),
+        Input("v2r-export-csv", "n_clicks"),
+        State("v2sim-df-store", "data"),
+        State("v2r-cols", "value"),
+        prevent_initial_call=True,
+    )
+    def export_results_csv(_: int, df_store: dict[str, Any] | None, selected: list[str] | None):
+        if not isinstance(df_store, dict) or not df_store:
+            return no_update, "Export CSV refuse: aucun resultat de simulation."
+        rows = df_store.get("rows", []) or []
+        if not rows:
+            return no_update, "Export CSV refuse: tableau resultat vide."
+        df = pd.DataFrame(rows)
+        selected_cols = [str(c) for c in (selected or []) if str(c) in df.columns]
+        if not selected_cols:
+            selected_cols = [str(c) for c in (df_store.get("default_columns", []) or []) if str(c) in df.columns]
+        if not selected_cols:
+            return no_update, "Export CSV refuse: aucune colonne valide selectionnee."
+        export_df = df[selected_cols].copy()
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"simulation_results_{stamp}.csv"
+        return dcc.send_data_frame(export_df.to_csv, filename, index=False), f"Export CSV OK: {filename}"
 
     @app.callback(
         Output("v2c-json-modal", "opened"),
@@ -955,7 +1143,7 @@ def register_callbacks(app):
                 return "Erreur validation: nom requis."
             if get_template_by_name(name) is not None:
                 return f"Attention: le nom '{name}' existe deja."
-            return "Validation OK."
+            return f"Validation OK.{si_hint}"
         except ValidationError as exc:
             return f"Erreur validation: {exc.errors()}"
         except Exception as exc:  # noqa: BLE001
@@ -986,9 +1174,9 @@ def register_callbacks(app):
             exists = get_template_by_name(name) is not None
             pending = {"name": name, "component_type": ctype, "kind": kind, "payload": payload}
             if exists:
-                return f"Le nom '{name}' existe deja. Confirmation requise.", pending, True, no_update
+                return f"Le nom '{name}' existe deja. Confirmation requise.{si_hint}", pending, True, no_update
             upsert_template(name=name, family="General", component_type=ctype, kind=kind, payload=payload)
-            return f"Composant sauvegarde en DB: {name}", {}, False, _next_rev(rev)
+            return f"Composant sauvegarde en DB: {name}.{si_hint}", {}, False, _next_rev(rev)
         except ValidationError as exc:
             return f"Erreur validation: {exc.errors()}", no_update, False, no_update
         except Exception as exc:  # noqa: BLE001
@@ -1014,7 +1202,7 @@ def register_callbacks(app):
             kind=str(pending.get("kind", "")),
             payload=pending.get("payload", {}),
         )
-        return f"Composant DB mis a jour: {str(pending.get('name', ''))}", {}, False, _next_rev(rev)
+        return f"Composant DB mis a jour: {str(pending.get('name', ''))}.{si_hint}", {}, False, _next_rev(rev)
 
     @app.callback(
         Output("v2m-update-modal", "opened", allow_duplicate=True),

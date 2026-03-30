@@ -7,6 +7,7 @@ from typing import Any
 
 from dash import html
 from dash_pydantic_form import ModelForm, fields
+from dash_pydantic_utils import Quantity
 from pydantic import BaseModel
 
 from cgn_model.web_ui_v2.components_basemodel import (
@@ -266,6 +267,54 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
     ctype = str(spec["component_type"])
     kind = str(spec["kind"])
 
+    def _quantity_to_value_unit(obj: Any, target_unit: str) -> dict[str, Any] | None:
+        if not isinstance(obj, dict):
+            return None
+        if obj.get("value") is None or obj.get("unit") is None:
+            return None
+        try:
+            q = Quantity.model_validate(obj)
+            q_conv = q.to(target_unit)
+            unit_out = str(target_unit)
+            # Normalisation UI -> code métier (config.py attend m3 et pas m^3).
+            if unit_out == "J/m^3":
+                unit_out = "J/m3"
+            elif unit_out == "m^3":
+                unit_out = "m3"
+            return {"value": float(q_conv.value), "unit": unit_out}
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _quantity_value_to(obj: Any, target_unit: str) -> float | None:
+        q = _quantity_to_value_unit(obj, target_unit)
+        if isinstance(q, dict):
+            try:
+                return float(q["value"])
+            except Exception:  # noqa: BLE001
+                return None
+        return None
+
+    def _quantity_to_si_level(obj: Any) -> dict[str, Any] | None:
+        """
+        Normalise un niveau initial vers unité SI:
+        - énergie -> J
+        - masse   -> kg
+        - volume  -> m^3
+        """
+        if not isinstance(obj, dict):
+            return None
+        unit = str(obj.get("unit", "")).strip()
+        if not unit:
+            return None
+        if unit in {"Wh", "kWh", "MWh", "J", "kJ", "MJ"}:
+            return _quantity_to_value_unit(obj, "J")
+        if unit in {"kg", "t", "Mg"}:
+            return _quantity_to_value_unit(obj, "kg")
+        if unit in {"m^3", "dm^3", "l"}:
+            # Conversion SI volume, puis renommage pour compat config métier ("m3").
+            return _quantity_to_value_unit(obj, "m^3")
+        return None
+
     if model_key == "profile.constant":
         component = {
             "id": raw["id"],
@@ -316,19 +365,6 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
 
         params_raw = raw.get("params", {}) if isinstance(raw.get("params"), dict) else {}
 
-        def _q(obj: Any, unit_fallback: str) -> float | None:
-            if isinstance(obj, dict):
-                try:
-                    return float(obj.get("value"))
-                except Exception:  # noqa: BLE001
-                    return None
-            if obj is None:
-                return None
-            try:
-                return float(obj)
-            except Exception:  # noqa: BLE001
-                return None
-
         component = {
             "id": raw["id"],
             "kind": kind,
@@ -336,9 +372,9 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             "source": "cgn_croisieres/all",
             "select": select_payload,
             "params": {
-                "acc": _q(params_raw.get("acc"), "m*s^-2"),
-                "dec": _q(params_raw.get("dec"), "m*s^-2"),
-                "v_croisiere": _q(params_raw.get("v_croisiere"), "m/s"),
+                "acc": _quantity_value_to(params_raw.get("acc"), "m*s^-2"),
+                "dec": _quantity_value_to(params_raw.get("dec"), "m*s^-2"),
+                "v_croisiere": _quantity_value_to(params_raw.get("v_croisiere"), "m/s"),
                 "allow_delay": str(params_raw.get("allow_delay", "yes")) == "yes",
             },
         }
@@ -420,19 +456,21 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             density = vector_params.get("density_kg_m3")
 
             if basis == "mass" and isinstance(vector_params.get("pci_mass"), dict):
-                q = vector_params.get("pci_mass", {})
+                q = _quantity_to_value_unit(vector_params.get("pci_mass", {}), "J/kg")
+                q_raw = vector_params.get("pci_mass", {}) if isinstance(vector_params.get("pci_mass", {}), dict) else {}
                 vector_params = {
                     "pci_basis": "mass",
-                    "pci_value": q.get("value"),
-                    "pci_mass_unit": q.get("unit"),
+                    "pci_value": (q or q_raw).get("value"),
+                    "pci_mass_unit": (q or q_raw).get("unit"),
                     "density_kg_m3": density,
                 }
             elif basis == "volume" and isinstance(vector_params.get("pci_volume"), dict):
-                q = vector_params.get("pci_volume", {})
+                q = _quantity_to_value_unit(vector_params.get("pci_volume", {}), "J/m^3")
+                q_raw = vector_params.get("pci_volume", {}) if isinstance(vector_params.get("pci_volume", {}), dict) else {}
                 vector_params = {
                     "pci_basis": "volume",
-                    "pci_value": q.get("value"),
-                    "pci_volume_unit": q.get("unit"),
+                    "pci_value": (q or q_raw).get("value"),
+                    "pci_volume_unit": (q or q_raw).get("unit"),
                     "density_kg_m3": density,
                 }
             else:
@@ -475,8 +513,8 @@ def payload_from_data(model_key: str, raw: dict[str, Any]) -> tuple[str, str, di
             il_f = raw.get("initial_level_fuel")
             if isinstance(il_f, dict):
                 q = il_f.get("value")
-        if isinstance(q, dict) and q.get("value") is not None and q.get("unit") is not None:
-            initial_level_payload = {"value": q.get("value"), "unit": q.get("unit")}
+        if isinstance(q, dict):
+            initial_level_payload = _quantity_to_si_level(q) or {"value": q.get("value"), "unit": q.get("unit")}
 
         component = {
             "id": raw["id"],

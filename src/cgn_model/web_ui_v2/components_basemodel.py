@@ -3,7 +3,17 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 from dash_pydantic_utils import Quantity
 from dash_pydantic_utils.quantity.quantity import ISUnits
-from dash_pydantic_form import fields
+# from dash_pydantic_form import fields
+
+
+PowerUnit = Literal["W", "kW", "MW", "GW"]
+SpeedUnit = Literal["m/s", "km/h", "kn"]
+ForceUnit = Literal["N", "kN", "MN", "GN"]
+ProfileUnit = Literal[
+    "W", "kW", "MW", "GW",
+    "m/s", "km/h", "kn",
+    "N", "kN", "MN", "GN",
+]
 
 
 def _register_pci_units() -> None:
@@ -117,8 +127,8 @@ class PowerToPowerPolyAdapter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de puissance en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
-    unit_in: Literal["W","kW", "MW", "GW"] = Field(title="Unité de puissance, en entrée", default="W")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(
+    unit_in: PowerUnit = Field(title="Unité de puissance, en entrée", default="W")
+    unit_out: PowerUnit = Field(
         title="Unité de puissance, en sortie",
         default="W",
         json_schema_extra={"repr_kwargs": {"disabled": True}},
@@ -153,8 +163,8 @@ class SpeedToPowerPolyAdapter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
-    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(
+    unit_in: SpeedUnit = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_out: PowerUnit = Field(
         title="Unité de puissance, en sortie",
         default="W",
         json_schema_extra={"repr_kwargs": {"disabled": True}},
@@ -189,7 +199,7 @@ class SpeedToEtaPoly(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
     # target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
-    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_in: SpeedUnit = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["-"] = Field(
         title="Unité de sortie adimentionnelle",
         description="Le rendement généré est adimentionnel.",
@@ -230,9 +240,9 @@ class ForceAndSpeedToPowerAdapter(BaseModel):
     force_source: str = Field(title="Profil de force source", description="Nom du profil de force en entrée.")
     speed_source: str = Field(title="Profil de vitesse source", description="Nom du profil de vitesse en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
-    force_unit_in: Literal["N", "kN", "MN"] = Field(title="Unité de force, en entrée", default="N")
-    speed_unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
-    unit_out: Literal["W","kW", "MW", "GW"] = Field(
+    force_unit_in: ForceUnit = Field(title="Unité de force, en entrée", default="N")
+    speed_unit_in: SpeedUnit = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_out: PowerUnit = Field(
         title="Unité de puissance, en sortie",
         default="W",
         json_schema_extra={"repr_kwargs": {"disabled": True}},
@@ -259,8 +269,8 @@ class SpeedToForcePoly(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
-    unit_in: Literal["m/s", "km/h", "kn"] = Field(title="Unité de vitesse, en entrée", default="m/s")
-    unit_out: Literal["N", "kN", "MN"] = Field(title="Unité de force, en sortie", default="N")
+    unit_in: SpeedUnit = Field(title="Unité de vitesse, en entrée", default="m/s")
+    unit_out: ForceUnit = Field(title="Unité de force, en sortie", default="N")
     coeffs: list[float] = Field(
         title="Coefficients polynomiaux (ordre croissant)",
         min_length=1,
@@ -293,7 +303,7 @@ class EnergyVectorParams(BaseModel):
         json_schema_extra={
             "repr_type": "Quantity",
             "repr_kwargs": {
-                "unit_options": ["kWh/kg", "MJ/kg", "kJ/kg", "J/kg"],
+                "unit_options": ["kWh/kg", "MJ/kg"],
                 "min": 0.01,
                 "visible": ("pci_basis", "==", "mass"),
                 **default_repr_kwargs,
@@ -306,7 +316,7 @@ class EnergyVectorParams(BaseModel):
         json_schema_extra={
             "repr_type": "Quantity",
             "repr_kwargs": {
-                "unit_options": {"kWh/dm^3": "kWh/l", "kWh/m^3": "kWh/m³", "MJ/m^3": "MJ/m³", "kJ/m^3": "kJ/m³", "J/m^3": "J/m³"},
+                "unit_options": {"kWh/dm^3": "kWh/l", "MJ/m^3": "MJ/m³"},
                 "min": 0.01,
                 "visible": ("pci_basis", "==", "volume"),
                 **default_repr_kwargs,
@@ -336,7 +346,7 @@ class InitialStorageLevelFuel(BaseModel):
         json_schema_extra={
             "repr_type": "Quantity",
             "repr_kwargs": {
-                "unit_options": {"kg": "kg", "Mg": "tonne", "dm^3": "litre", "m^3": "m³", "kWh": "kWh", "Wh": "Wh", "MWh": "MWh", "J": "J", "kJ": "kJ", "MJ": "MJ"},
+                "unit_options": {"kg": "kg", "Mg": "tonne", "dm^3": "litre", "m^3": "m³"},
                 "min": 0.0,
                 **default_repr_kwargs,
             },
@@ -356,7 +366,7 @@ class InitialStorageLevelElectrical(BaseModel):
         json_schema_extra={
             "repr_type": "Quantity",
             "repr_kwargs": {
-                "unit_options": ["kWh", "Wh", "MWh", "J", "kJ", "MJ"],
+                "unit_options": ["kWh", "MWh"],
                 "min": 0.0,
                 **default_repr_kwargs,
             },
@@ -388,7 +398,7 @@ class StorageFuel(BaseModel):
     )
     initial_level_fuel: InitialStorageLevelFuel = Field(
         title="Etat initial du stockage - Combustible",
-        description="Etat initial (énergie/masse/volume). Mettre 0 pour démarrer vide.",
+        description="Etat initial (énergie/masse/volume). Laisser à 0 pour démarrer vide.",
         default_factory=InitialStorageLevelFuel,
     )
 
@@ -406,7 +416,7 @@ class StorageGeneric(BaseModel):
     vector_energy: str | None = Field(title="Nom du vecteur énergétique", description="Description optionnelle du vecteur énergétique.", default=None)
     initial_level_electrical: InitialStorageLevelElectrical = Field(
         title="Etat initial du stockage - Electrique (énergie)",
-        description="Etat initial (énergie). Mettre 0 pour démarrer vide.",
+        description="Etat initial (énergie). Laisser à 0 pour démarrer vide.",
         default_factory=InitialStorageLevelElectrical,
     )
 
@@ -450,7 +460,7 @@ class ConstantProfile(BaseModel):
     Profil constant
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
-    unit: str = Field(title="Unité du profil", description="Unité de la valeur constante.")
+    unit: ProfileUnit = Field(title="Unité du profil", description="Unité de la valeur constante.")
     value: float = Field(title="Valeur", default_factory=float, json_schema_extra={"repr_kwargs": {**default_repr_kwargs}})
 
 class SeriesProfile(BaseModel):
@@ -458,7 +468,7 @@ class SeriesProfile(BaseModel):
     Profil serie explicite
     """
     id: str = Field(title="Nom", description="Nom/identifiant du profil d'entrée.")
-    unit: str = Field(title="Unité du profil", description="Unité de la série de valeurs.")
+    unit: ProfileUnit = Field(title="Unité du profil", description="Unité de la série de valeurs.")
     data: list[float] = Field(
         title="Liste de valeur",
         min_length=1, 
@@ -478,15 +488,15 @@ class FileProfile(BaseModel):
         description="Chemin d'acces complet (absolu) du fichier CSV d'entree.",
     )
     column: str | None = Field(title="Entête de la colonne contenant les valeurs", description="Si le champ est laisé vide, la première colonne est utilisée.", default=None)
-    unit: str = Field(title="Unité du profil", description="Unité des valeurs de la colonne du fichier CSV.")
-    sep: Literal["auto", ",", ";", "\t"] = Field(
+    unit: ProfileUnit = Field(title="Unité du profil", description="Unité des valeurs de la colonne du fichier CSV.")
+    sep: Literal["auto", ",", ";", "\t", "|"] = Field(
         title="Caractère séparateur de colonne",
         description="Par défaut une autodétéction est executée.",
         default="auto",
         json_schema_extra={
             "repr_type": "SegmentedControl",
             "repr_kwargs": {
-                "options_labels": {"auto": "Auto", ",": "Virgule", ";": "Point-virgule", "\t": "Tabulation"},
+                "options_labels": {"auto": "Auto", ",": "Virgule", ";": "Point-virgule", "\t": "Tabulation", "|": "Pipe"},
             },
         },
     )
@@ -627,4 +637,3 @@ class NavSpeedProfile(BaseModel):
             # En mode 'cruise', on ignore explicitement le numéro de course.
             self.course_no = None
         return self
-
