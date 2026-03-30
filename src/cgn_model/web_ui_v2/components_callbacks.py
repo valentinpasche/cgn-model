@@ -350,6 +350,19 @@ def _build_schema_bundle(current_schema: dict[str, Any]) -> dict[str, Any]:
     return {"schema": {"name": schema_name, "components": component_names}, "components": components}
 
 
+def _build_bundle_from_current_schema(current_schema: dict[str, Any] | None) -> tuple[dict[str, Any] | None, str]:
+    current = current_schema if isinstance(current_schema, dict) else {"name": "", "components": []}
+    ok, msg = _check_schema_constraints_for_validate(current)
+    if not ok:
+        return None, msg
+    name = str(current.get("name", "")).strip()
+    if not name:
+        return None, "Validation echec: nom du schema requis."
+    if any(str(r.get("name", "")) == name for r in list_schemas()):
+        return _build_schema_bundle(current), f"Attention: le nom '{name}' existe deja."
+    return _build_schema_bundle(current), "Validation OK: schema coherent."
+
+
 def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
     schema = bundle.get("schema", {}) if isinstance(bundle, dict) else {}
     components = bundle.get("components", []) if isinstance(bundle, dict) else []
@@ -497,11 +510,28 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _default_result_columns(columns: list[str], profile_ids: list[str] | None = None) -> list[str]:
+def _compile_with_checks(bundle: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    try:
+        compiled = _compile_bundle_to_yaml(bundle)
+        n_profiles = len(compiled.get("profiles", []) or [])
+        n_converters = len(compiled.get("converters", []) or [])
+        if n_profiles < 1 or n_converters < 1:
+            return None, "Compilation echec: il faut au minimum 1 profil et 1 convertisseur."
+        return compiled, "Compilation OK."
+    except Exception as exc:  # noqa: BLE001
+        return None, f"Compilation echec: {exc}"
+
+
+def _default_result_columns(
+    columns: list[str],
+    profile_ids: list[str] | None = None,
+    units_by_col: dict[str, str] | None = None,
+) -> list[str]:
     cols = [str(c) for c in (columns or [])]
     if not cols:
         return []
     _ = profile_ids  # conserve la signature actuelle, non utilise.
+    units_by_col = {str(k): str(v) for k, v in (units_by_col or {}).items()}
 
     out: list[str] = []
     out_set: set[str] = set()
@@ -514,9 +544,9 @@ def _default_result_columns(columns: list[str], profile_ids: list[str] | None = 
     # 1) time_s (exact attendu)
     _add("time_s")
 
-    # 2) tous les profils
+    # 2) profils de vitesse uniquement (unitÃ© m/s)
     for c in cols:
-        if c.startswith("profile_"):
+        if c.startswith("profile_") and units_by_col.get(c, "") == "m/s":
             _add(c)
 
     # 3) stockages:
@@ -536,18 +566,19 @@ def _default_result_columns(columns: list[str], profile_ids: list[str] | None = 
         m_col = f"{pref}_m_stock_kg"
         e_col = f"{pref}_e_stock_kWh"
         e_col_typo = f"{pref}_e_stoc_kWh"
-        has_vm = False
+        # Un seul trace par storage: priorite litre, sinon kWh.
         if v_col in cols:
             _add(v_col)
-            has_vm = True
+            continue
+        if e_col in cols:
+            _add(e_col)
+            continue
+        if e_col_typo in cols:
+            _add(e_col_typo)
+            continue
+        # fallback dernier recours si pas de volume ni kWh
         if m_col in cols:
             _add(m_col)
-            has_vm = True
-        if not has_vm:
-            if e_col in cols:
-                _add(e_col)
-            elif e_col_typo in cols:
-                _add(e_col_typo)
 
     # Fallback minimal si rien de selectionne
     if not out:
@@ -617,10 +648,21 @@ def _build_result_figure(
     for idx, unit in enumerate(grouped.keys(), start=1):
         axis_key_by_unit[unit] = "y" if idx == 1 else f"y{idx}"
 
+    def _display_unit_label(unit: str) -> str:
+        if unit == "l":
+            return "litre"
+        if unit == "l/s":
+            return "litre/s"
+        if unit == "m3/s":
+            return "m³/s"
+        if unit == "m3":
+            return "m³"
+        return unit
+
     n_axes = len(grouped)
     for axis_idx, unit in enumerate(grouped.keys(), start=1):
         axis_name = "yaxis" if axis_idx == 1 else f"yaxis{axis_idx}"
-        title = unit
+        title = _display_unit_label(unit)
         if axis_idx == 1:
             fig.update_layout(**{axis_name: {"title": title, "side": "left"}})
         else:
@@ -651,12 +693,12 @@ def _build_result_figure(
             )
         )
 
-    fig.update_layout(
-        template="plotly_white",
-        title="Resultats simulation",
-        height=320,
-        margin={"l": 55, "r": max(30, 40 + 45 * max(0, n_axes - 1)), "t": 45, "b": 40},
-        legend={"orientation": "v", "x": 1.01, "xanchor": "left", "y": 1.0},
+        fig.update_layout(
+            template="plotly_white",
+            title="Résultats simulation - Preview",
+            height=320,
+        margin={"l": 55, "r": max(30, 40 + 45 * max(0, n_axes - 1)), "t": 45, "b": 95},
+        legend={"orientation": "h", "x": 0.0, "xanchor": "left", "y": -0.22},
     )
     fig.update_xaxes(title_text=x_title)
     return fig
@@ -916,41 +958,48 @@ def register_callbacks(app):
         Output("v2c-yaml-store", "data"),
         Input("v2c-compile", "n_clicks"),
         State("v2c-json-store", "data"),
+        State("v2s-current", "data"),
         prevent_initial_call=True,
     )
-    def compile_bundle(_: int, bundle: dict[str, Any] | None):
-        if not isinstance(bundle, dict) or not bundle:
-            return "Aucun JSON valide a compiler. Lance d'abord 'Valider' sur le schema.", no_update
-        try:
-            compiled = _compile_bundle_to_yaml(bundle)
-            n_profiles = len(compiled.get("profiles", []) or [])
-            n_converters = len(compiled.get("converters", []) or [])
-            if n_profiles < 1 or n_converters < 1:
-                return (
-                    "Compilation echec: il faut au minimum 1 profil et 1 convertisseur.",
-                    no_update,
-                )
-            return "Compilation OK.", compiled
-        except Exception as exc:  # noqa: BLE001
-            return f"Compilation echec: {exc}", no_update
+    def compile_bundle(_: int, bundle: dict[str, Any] | None, current_schema: dict[str, Any] | None):
+        work_bundle = bundle if isinstance(bundle, dict) and bundle else None
+        if work_bundle is None:
+            work_bundle, msg = _build_bundle_from_current_schema(current_schema)
+            if work_bundle is None:
+                return msg, no_update
+
+        compiled, msg = _compile_with_checks(work_bundle)
+        if compiled is None:
+            return msg, no_update
+        return msg, compiled
 
     @app.callback(
         Output("v2c-status", "children", allow_duplicate=True),
         Output("v2r-sim-summary", "children"),
         Output("v2sim-last-run", "data"),
         Output("v2sim-df-store", "data"),
+        Output("v2c-yaml-store", "data", allow_duplicate=True),
         Input("v2c-simulate", "n_clicks"),
+        State("v2c-json-store", "data"),
+        State("v2s-current", "data"),
         State("v2c-yaml-store", "data"),
         prevent_initial_call=True,
     )
-    def simulate_from_compiled(_: int, compiled: dict[str, Any] | None):
-        if not isinstance(compiled, dict) or not compiled:
-            return "Simulation refusee: compile d'abord une configuration YAML valide.", no_update, no_update, no_update
+    def simulate_from_compiled(
+        _: int,
+        bundle: dict[str, Any] | None,
+        current_schema: dict[str, Any] | None,
+        compiled_from_store: dict[str, Any] | None,
+    ):
+        work_bundle = bundle if isinstance(bundle, dict) and bundle else None
+        if work_bundle is None:
+            work_bundle, msg = _build_bundle_from_current_schema(current_schema)
+            if work_bundle is None:
+                return msg, no_update, no_update, no_update, no_update
 
-        n_profiles = len(compiled.get("profiles", []) or [])
-        n_converters = len(compiled.get("converters", []) or [])
-        if n_profiles < 1 or n_converters < 1:
-            return "Simulation refusee: minimum 1 profil et 1 convertisseur requis.", no_update, no_update, no_update
+        compiled, msg = _compile_with_checks(work_bundle)
+        if compiled is None:
+            return msg, no_update, no_update, no_update, no_update
 
         try:
             yaml_text = yaml.safe_dump(compiled, allow_unicode=True, sort_keys=False)
@@ -958,7 +1007,11 @@ def register_callbacks(app):
             df_export = out.dataframe.where(pd.notna(out.dataframe), None)
             rows = df_export.to_dict(orient="records")
             profile_ids = [str(p.get("id", "")).strip() for p in (compiled.get("profiles", []) or []) if isinstance(p, dict)]
-            default_cols = _default_result_columns(out.columns, profile_ids=profile_ids)
+            default_cols = _default_result_columns(
+                out.columns,
+                profile_ids=profile_ids,
+                units_by_col=out.units,
+            )
             summary = html.Div(
                 [
                     html.H4("Derniere simulation", style={"marginTop": "0", "marginBottom": "6px"}),
@@ -979,9 +1032,11 @@ def register_callbacks(app):
                 "selected_columns": default_cols,
                 "units": out.units,
             }
-            return "Simulation OK.", summary, meta, df_store
+            return "Simulation OK.", summary, meta, df_store, compiled
         except Exception as exc:  # noqa: BLE001
-            return f"Simulation echec: {exc}", no_update, no_update, no_update
+            # En cas d'echec simulation, on garde le YAML compilé issu de ce clic.
+            fallback_yaml = compiled if isinstance(compiled, dict) else compiled_from_store
+            return f"Simulation echec: {exc}", no_update, no_update, no_update, fallback_yaml
 
     @app.callback(
         Output("v2r-cols", "options"),
@@ -1086,6 +1141,29 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def close_yaml_modal(_: int):
+        return False
+
+    @app.callback(
+        Output("v2r-plot-modal", "opened"),
+        Output("v2r-graph-large", "figure"),
+        Input("v2r-open-plot", "n_clicks"),
+        State("v2r-graph", "figure"),
+        prevent_initial_call=True,
+    )
+    def open_large_plot(_: int, fig: dict[str, Any] | None):
+        out_fig = fig if isinstance(fig, dict) else {"data": [], "layout": {"template": "plotly_white"}}
+        layout = out_fig.setdefault("layout", {})
+        if isinstance(layout, dict):
+            layout["height"] = 720
+            layout["title"] = "Résultats simulation - Preview"
+        return True, out_fig
+
+    @app.callback(
+        Output("v2r-plot-modal", "opened", allow_duplicate=True),
+        Input("v2r-close-plot", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def close_large_plot(_: int):
         return False
 
     @app.callback(

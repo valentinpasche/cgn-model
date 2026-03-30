@@ -118,6 +118,31 @@ def build_layout():
                         ),
                     ],
                 ),
+                dmc.Modal(
+                    id="v2r-plot-modal",
+                    title="Résultats simulation - Graphique",
+                    opened=False,
+                    size="95%",
+                    children=[
+                        dcc.Graph(
+                            id="v2r-graph-large",
+                            figure={
+                                "data": [],
+                                "layout": {
+                                    "title": "Résultats simulation - Preview",
+                                    "template": "plotly_white",
+                                    "height": 720,
+                                },
+                            },
+                            config={"displaylogo": False, "responsive": True},
+                            style={"height": "75vh"},
+                        ),
+                        html.Div(
+                            [html.Button("Fermer", id="v2r-close-plot", n_clicks=0)],
+                            style={"marginTop": "10px"},
+                        ),
+                    ],
+                ),
                 html.Div(
                     [
                         # Haut gauche: schemas
@@ -256,6 +281,7 @@ def build_layout():
                                         html.Div(
                                             [
                                                 html.Button("Exporter CSV", id="v2r-export-csv", n_clicks=0),
+                                                html.Button("Ouvrire le graphique", id="v2r-open-plot", n_clicks=0, style={"marginLeft": "8px"}),
                                             ],
                                             style={"marginBottom": "8px"},
                                         ),
