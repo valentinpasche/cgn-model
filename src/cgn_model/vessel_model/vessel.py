@@ -1152,7 +1152,7 @@ class Vessel:
             if unit == "W" and col.endswith("_W"):
                 return col[:-2]
             if unit == "kWh" and col.endswith("_kWh"):
-                return col[:-5]
+                return col[:-4]
             if unit == "J" and col.endswith("_J"):
                 return col[:-2]
             if unit == "kg" and col.endswith("_kg"):
@@ -1180,45 +1180,58 @@ class Vessel:
                     if inp.profile is not None:
                         t = np.arange(len(inp.profile), dtype=float) * float(self.dt)
                         break
+        time_col: str | None = None
         if t is not None:
-            _add_col("time", t, "s")
+            time_col = _add_col("time", t, "s")
 
         # --- signals
         if self.signals is None:
             raise RuntimeError("signals manquants. Construisez le Vessel via from_yaml().")
+        profile_ids = set((self.profiles or {}).keys())
+        signal_col_by_id: dict[str, str] = {}
         for sig_id, (arr, unit) in self.signals.items():
-            _add_col(sig_id, arr, unit)
+            prefix = "profile" if sig_id in profile_ids else "adapter"
+            c = _add_col(f"{prefix}_{sig_id}", arr, unit)
+            signal_col_by_id[sig_id] = c
 
         # --- solver inputs
         missing_inputs = [i.id for i in self.solver.inputs.values() if i.profile is None]
+        input_col_by_id: dict[str, str] = {}
         if missing_inputs:
             pass
         else:
             for inp_id, inp in self.solver.inputs.items():
-                _add_col(inp_id, inp.profile, "W")  # type: ignore[arg-type]
+                c = _add_col(f"input_{inp_id}", inp.profile, "W")  # type: ignore[arg-type]
+                input_col_by_id[inp_id] = c
 
         # --- converters in/out
         missing_convs = [
             c_id for c_id, conv in self.solver.converters.items()
             if getattr(conv, "p_in_w", None) is None or getattr(conv, "p_out_w", None) is None
         ]
+        conv_cols_by_id: dict[str, tuple[str, str]] = {}
         if missing_convs:
             pass
         else:
             for conv_id, conv in self.solver.converters.items():
-                _add_col(f"{conv_id}_in", conv.p_in_w, "W")   # type: ignore[arg-type]
-                _add_col(f"{conv_id}_out", conv.p_out_w, "W") # type: ignore[arg-type]
+                c_in = _add_col(f"converter_{conv_id}_in", conv.p_in_w, "W")   # type: ignore[arg-type]
+                c_out = _add_col(f"converter_{conv_id}_out", conv.p_out_w, "W") # type: ignore[arg-type]
+                conv_cols_by_id[conv_id] = (c_in, c_out)
 
         # --- storages
+        storage_cols_by_id: dict[str, list[str]] = {}
         if self.storages is not None:
             for stor_id, res in self.storages.items():
                 df = res.to_dataframe()
+                s_cols: list[str] = []
                 for col in df.columns:
                     if col == "t_s":
                         continue
                     unit = _unit_from_storage_col(col)
                     base = _strip_storage_suffix(col, unit)
-                    _add_col(f"{stor_id}_{base}", df[col].to_numpy(), unit)
+                    c = _add_col(f"storage_{stor_id}_{base}", df[col].to_numpy(), unit)
+                    s_cols.append(c)
+                storage_cols_by_id[stor_id] = s_cols
 
         # Guardrails when ids=None: on veut tout, donc exiger la presence des blocs manquants
         if ids is None:
@@ -1248,37 +1261,28 @@ class Vessel:
                 if c not in lst:
                     lst.append(c)
 
-        if "time" in [c.split('_')[0] for c in columns.keys()]:
-            # On mappe "time" vers la colonne time_* si presente
-            for c in order:
-                if c.startswith("time_"):
-                    _add_selector("time", [c])
-                    break
+        if time_col is not None:
+            _add_selector("time", [time_col])
 
-        for sig_id in (self.signals or {}).keys():
-            for c in order:
-                if c.startswith(f"{sig_id}_"):
-                    _add_selector(sig_id, [c])
-                    break
+        for sig_id, c in signal_col_by_id.items():
+            _add_selector(sig_id, [c])        # compat historique
+            _add_selector(c, [c])             # id prefixed explicite
 
-        for inp_id in self.solver.inputs.keys():
-            for c in order:
-                if c.startswith(f"{inp_id}_"):
-                    _add_selector(inp_id, [c])
-                    break
+        for inp_id, c in input_col_by_id.items():
+            _add_selector(inp_id, [c])        # compat historique
+            _add_selector(c, [c])             # input_<id>_<unit>
 
-        for conv_id in self.solver.converters.keys():
-            cols = [c for c in order if c.startswith(f"{conv_id}_in_") or c.startswith(f"{conv_id}_out_")]
+        for conv_id, cols in conv_cols_by_id.items():
+            c_in, c_out = cols
+            _add_selector(conv_id, [c_in, c_out])                 # compat historique
+            _add_selector(f"{conv_id}_in", [c_in])                # compat historique
+            _add_selector(f"{conv_id}_out", [c_out])              # compat historique
+            _add_selector(f"converter_{conv_id}", [c_in, c_out])  # nouveau prefixe logique
+
+        for stor_id, cols in storage_cols_by_id.items():
             if cols:
-                _add_selector(conv_id, cols)
-                _add_selector(f"{conv_id}_in", [c for c in cols if c.startswith(f"{conv_id}_in_")])
-                _add_selector(f"{conv_id}_out", [c for c in cols if c.startswith(f"{conv_id}_out_")])
-
-        if self.storages is not None:
-            for stor_id, res in self.storages.items():
-                cols = [c for c in order if c.startswith(f"{stor_id}_")]
-                if cols:
-                    _add_selector(stor_id, cols)
+                _add_selector(stor_id, cols)                    # compat historique
+                _add_selector(f"storage_{stor_id}", cols)       # nouveau prefixe logique
 
         # --- selection
         if ids is None:
@@ -1439,8 +1443,6 @@ converters:
     
     
     
-
-
 
 
 

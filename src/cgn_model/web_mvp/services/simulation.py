@@ -22,6 +22,7 @@ class SimulationOutput:
     dataframe: pd.DataFrame
     columns: list[str]
     n_rows: int
+    units: dict[str, str]
 
 
 def run_simulation_from_yaml(yaml_text: str) -> SimulationOutput:
@@ -38,4 +39,5 @@ def run_simulation_from_yaml(yaml_text: str) -> SimulationOutput:
         dataframe=df,
         columns=list(df.columns),
         n_rows=len(df),
+        units=dict(getattr(df, "attrs", {}).get("units", {}) or {}),
     )

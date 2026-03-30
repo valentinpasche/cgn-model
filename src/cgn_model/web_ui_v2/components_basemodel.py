@@ -14,6 +14,7 @@ ProfileUnit = Literal[
     "m/s", "km/h", "kn",
     "N", "kN", "MN", "GN",
 ]
+TargetSign = Literal["consume", "inject", "as_is"]
 
 
 def _register_pci_units() -> None:
@@ -127,6 +128,20 @@ class PowerToPowerPolyAdapter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de puissance en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
+    target_sign: TargetSign = Field(
+        title="Convention de signe vers la cible",
+        description="consume: + => demande | inject: + => injection | as_is: signe conservé.",
+        json_schema_extra={
+            "repr_type": "SegmentedControl",
+            "repr_kwargs": {
+                "options_labels": {
+                    "consume": "Demande (+)",
+                    "inject": "Injection (+)",
+                    "as_is": "Signe brut (+/-)",
+                },
+            },
+        },
+    )
     unit_in: PowerUnit = Field(title="Unité de puissance, en entrée", default="W")
     unit_out: PowerUnit = Field(
         title="Unité de puissance, en sortie",
@@ -163,6 +178,20 @@ class SpeedToPowerPolyAdapter(BaseModel):
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
+    target_sign: TargetSign = Field(
+        title="Convention de signe vers la cible",
+        description="consume: + => demande | inject: + => injection | as_is: signe conserve.",
+        json_schema_extra={
+            "repr_type": "SegmentedControl",
+            "repr_kwargs": {
+                "options_labels": {
+                    "consume": "Demande (+)",
+                    "inject": "Injection (+)",
+                    "as_is": "Signe brut (+/-)",
+                },
+            },
+        },
+    )
     unit_in: SpeedUnit = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: PowerUnit = Field(
         title="Unité de puissance, en sortie",
@@ -198,7 +227,6 @@ class SpeedToEtaPoly(BaseModel):
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de vitesse en entrée.")
-    # target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     unit_in: SpeedUnit = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: Literal["-"] = Field(
         title="Unité de sortie adimentionnelle",
@@ -240,6 +268,20 @@ class ForceAndSpeedToPowerAdapter(BaseModel):
     force_source: str = Field(title="Profil de force source", description="Nom du profil de force en entrée.")
     speed_source: str = Field(title="Profil de vitesse source", description="Nom du profil de vitesse en entrée.")
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
+    target_sign: TargetSign = Field(
+        title="Convention de signe vers la cible",
+        description="consume: + => demande | inject: + => injection | as_is: signe conserve.",
+        json_schema_extra={
+            "repr_type": "SegmentedControl",
+            "repr_kwargs": {
+                "options_labels": {
+                    "consume": "Demande (+)",
+                    "inject": "Injection (+)",
+                    "as_is": "Signe brut (+/-)",
+                },
+            },
+        },
+    )
     force_unit_in: ForceUnit = Field(title="Unité de force, en entrée", default="N")
     speed_unit_in: SpeedUnit = Field(title="Unité de vitesse, en entrée", default="m/s")
     unit_out: PowerUnit = Field(
@@ -610,8 +652,7 @@ class NavSpeedProfile(BaseModel):
         default=None,
         json_schema_extra={"repr_kwargs": {"visible": ("select", "==", "course")}},
     )
-    # unit: str = "m/s"
-    # source: str = "all"
+
     params: NavParams = Field(
         title="Paramètres de vitesse de déplacement",
         default_factory=NavParams,

@@ -6,6 +6,7 @@ import json
 import re
 from datetime import datetime
 from typing import Any
+import unicodedata
 import yaml
 import pandas as pd
 import plotly.graph_objects as go
@@ -39,6 +40,25 @@ from cgn_model.web_ui_v2.services.storage import (
     upsert_schema,
     upsert_template,
 )
+
+
+def _is_auto_text(raw: Any) -> bool:
+    if not isinstance(raw, str):
+        return False
+    v = raw.strip().lower()
+    v_ascii = (
+        unicodedata.normalize("NFKD", v)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    v_ascii = re.sub(r"[^a-z0-9]+", "-", v_ascii).strip("-")
+    return (
+        v_ascii == "auto"
+        or v_ascii.startswith("auto-")
+        or "auto-genere" in v_ascii
+        or "auto-generate" in v_ascii
+        or "auto-generated" in v_ascii
+    )
 
 
 def _schema_components_list(schema_like: dict[str, Any] | None) -> list[str]:
@@ -264,7 +284,7 @@ def _validate_schema(schema_components: list[str], catalog: dict[str, dict[str, 
         )
         s = seed if isinstance(seed, dict) else {}
         to_bus = str(s.get("to_bus", "")).strip()
-        if not to_bus or to_bus in {"auto-généré", "auto-genere"}:
+        if not to_bus or _is_auto_text(to_bus):
             continue
         to_bus_map.setdefault(to_bus, []).append(comp_id)
     multi_feeders = {bus: ids for bus, ids in to_bus_map.items() if len(ids) > 1}
@@ -345,10 +365,7 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
         return isinstance(raw, str) and raw.strip() != ""
 
     def _is_auto_token(raw: Any) -> bool:
-        if not isinstance(raw, str):
-            return False
-        v = raw.strip().lower()
-        return v in {"auto-généré", "auto-genere", "auto-generate", "auto_generated", "auto"}
+        return _is_auto_text(raw)
 
     out: dict[str, Any] = {
         "vessel": {"name": schema_name, "vessel_type": "undefined"},
@@ -412,9 +429,13 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
             adapter_id = str(adapter.get("id", "")).strip()
             target = str(adapter.get("target", "")).strip()
             unit_out = str(adapter.get("unit_out", "")).strip()
+            target_sign = str(adapter.get("target_sign", "consume")).strip()
+            if target_sign not in {"consume", "inject", "as_is"}:
+                target_sign = "consume"
 
             # target n'est pas un champ métier solver: on le retire du YAML final.
             adapter.pop("target", None)
+            adapter.pop("target_sign", None)
             out["adapters"].append(adapter)
 
             # Génération auto d'input uniquement pour adaptateurs puissance.
@@ -427,7 +448,7 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
                             "id": _make_input_id(adapter_id, target),
                             "bus": target_bus,
                             "source": adapter_id,
-                            "sign": "as_is",
+                            "sign": target_sign,
                         }
                     )
         elif ctype == "converter":
@@ -463,7 +484,11 @@ def _compile_bundle_to_yaml(bundle: dict[str, Any]) -> dict[str, Any]:
             storage.pop("kind", None)
             storage.pop("vector_kind", None)
             storage_id = str(storage.get("id", "")).strip()
-            bus = _bus_id(storage_id) if storage_id else ""
+            raw_bus = storage.get("bus")
+            if _is_nonempty(raw_bus) and not _is_auto_token(raw_bus):
+                bus = _bus_id(str(raw_bus))
+            else:
+                bus = _bus_id(storage_id) if storage_id else ""
             if bus:
                 storage["bus"] = bus
                 _add_bus(bus)
@@ -476,45 +501,67 @@ def _default_result_columns(columns: list[str], profile_ids: list[str] | None = 
     cols = [str(c) for c in (columns or [])]
     if not cols:
         return []
-    profile_ids = [str(x) for x in (profile_ids or []) if str(x).strip()]
-
-    def _pick_time() -> list[str]:
-        preferred = ["time", "t", "time_s", "time [s]", "time[s]"]
-        for p in preferred:
-            for c in cols:
-                if c.lower() == p:
-                    return [c]
-        for c in cols:
-            lc = c.lower()
-            if "time" in lc or lc.endswith("_s"):
-                return [c]
-        return []
+    _ = profile_ids  # conserve la signature actuelle, non utilise.
 
     out: list[str] = []
-    out.extend(_pick_time())
+    out_set: set[str] = set()
 
-    # Colonnes proches des profils (ex: id profil visible dans le nom de colonne).
-    for pid in profile_ids:
-        for c in cols:
-            if c in out:
-                continue
-            lc = c.lower()
-            lp = pid.lower()
-            if lc == lp or lc.startswith(lp) or lp in lc:
-                out.append(c)
+    def _add(col: str) -> None:
+        if col in cols and col not in out_set:
+            out.append(col)
+            out_set.add(col)
 
-    # Fallback court pour eviter 30 courbes par defaut.
-    if len(out) < 2:
-        for c in cols:
-            if c not in out:
-                out.append(c)
-            if len(out) >= min(6, len(cols)):
+    # 1) time_s (exact attendu)
+    _add("time_s")
+
+    # 2) tous les profils
+    for c in cols:
+        if c.startswith("profile_"):
+            _add(c)
+
+    # 3) stockages:
+    # - priorite a *_v_stock_l et *_m_stock_kg
+    # - sinon fallback *_e_stock_kWh (ou typo historique *_e_stoc_kWh)
+    storage_prefixes: set[str] = set()
+    for c in cols:
+        if not c.startswith("storage_"):
+            continue
+        for suf in ("_v_stock_l", "_m_stock_kg", "_e_stock_kWh", "_e_stoc_kWh"):
+            if c.endswith(suf):
+                storage_prefixes.add(c[: -len(suf)])
                 break
+
+    for pref in sorted(storage_prefixes):
+        v_col = f"{pref}_v_stock_l"
+        m_col = f"{pref}_m_stock_kg"
+        e_col = f"{pref}_e_stock_kWh"
+        e_col_typo = f"{pref}_e_stoc_kWh"
+        has_vm = False
+        if v_col in cols:
+            _add(v_col)
+            has_vm = True
+        if m_col in cols:
+            _add(m_col)
+            has_vm = True
+        if not has_vm:
+            if e_col in cols:
+                _add(e_col)
+            elif e_col_typo in cols:
+                _add(e_col_typo)
+
+    # Fallback minimal si rien de selectionne
+    if not out:
+        for c in cols[: min(6, len(cols))]:
+            _add(c)
 
     return out
 
 
-def _build_result_figure(rows: list[dict[str, Any]], selected_cols: list[str]) -> go.Figure:
+def _build_result_figure(
+    rows: list[dict[str, Any]],
+    selected_cols: list[str],
+    units_by_col: dict[str, str] | None = None,
+) -> go.Figure:
     fig = go.Figure()
     if not rows or not selected_cols:
         fig.update_layout(
@@ -557,13 +604,50 @@ def _build_result_figure(rows: list[dict[str, Any]], selected_cols: list[str]) -
         y_cols = cols
         x_title = "Index"
 
+    units_by_col = {str(k): str(v) for k, v in (units_by_col or {}).items()}
+
+    # Groupe par unite pour creer 1 axe Y par grandeur/unite.
+    grouped: dict[str, list[str]] = {}
     for c in y_cols:
+        unit = units_by_col.get(c, "unitless")
+        unit = unit if unit and unit.strip() else "unitless"
+        grouped.setdefault(unit, []).append(c)
+
+    axis_key_by_unit: dict[str, str] = {}
+    for idx, unit in enumerate(grouped.keys(), start=1):
+        axis_key_by_unit[unit] = "y" if idx == 1 else f"y{idx}"
+
+    n_axes = len(grouped)
+    for axis_idx, unit in enumerate(grouped.keys(), start=1):
+        axis_name = "yaxis" if axis_idx == 1 else f"yaxis{axis_idx}"
+        title = unit
+        if axis_idx == 1:
+            fig.update_layout(**{axis_name: {"title": title, "side": "left"}})
+        else:
+            pos = max(0.05, 1.0 - 0.07 * (axis_idx - 2))
+            fig.update_layout(
+                **{
+                    axis_name: {
+                        "title": title,
+                        "overlaying": "y",
+                        "side": "right",
+                        "anchor": "free",
+                        "position": pos,
+                        "showgrid": False,
+                    }
+                }
+            )
+
+    for c in y_cols:
+        unit = units_by_col.get(c, "unitless")
+        axis_key = axis_key_by_unit.get(unit or "unitless", "y")
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=df[c],
                 mode="lines",
                 name=c,
+                yaxis=axis_key,
             )
         )
 
@@ -571,7 +655,7 @@ def _build_result_figure(rows: list[dict[str, Any]], selected_cols: list[str]) -
         template="plotly_white",
         title="Resultats simulation",
         height=320,
-        margin={"l": 40, "r": 20, "t": 45, "b": 40},
+        margin={"l": 55, "r": max(30, 40 + 45 * max(0, n_axes - 1)), "t": 45, "b": 40},
         legend={"orientation": "v", "x": 1.01, "xanchor": "left", "y": 1.0},
     )
     fig.update_xaxes(title_text=x_title)
@@ -886,12 +970,14 @@ def register_callbacks(app):
                 "n_rows": out.n_rows,
                 "n_cols": len(out.columns),
                 "columns": out.columns,
+                "units": out.units,
             }
             df_store = {
                 "columns": out.columns,
                 "rows": rows,
                 "default_columns": default_cols,
                 "selected_columns": default_cols,
+                "units": out.units,
             }
             return "Simulation OK.", summary, meta, df_store
         except Exception as exc:  # noqa: BLE001
@@ -925,6 +1011,10 @@ def register_callbacks(app):
 
         columns = [str(c) for c in (df_store.get("columns", []) or [])]
         rows = df_store.get("rows", []) or []
+        units_by_col = {
+            str(k): str(v)
+            for k, v in (df_store.get("units", {}) or {}).items()
+        }
 
         selected_clean = [str(c) for c in (selected or []) if str(c) in set(columns)]
         if not selected_clean:
@@ -932,7 +1022,7 @@ def register_callbacks(app):
         if not selected_clean:
             selected_clean = columns[: min(6, len(columns))]
 
-        fig = _build_result_figure(rows, selected_clean)
+        fig = _build_result_figure(rows, selected_clean, units_by_col=units_by_col)
         return fig
 
     @app.callback(
