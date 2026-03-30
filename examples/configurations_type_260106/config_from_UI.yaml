@@ -1,0 +1,96 @@
+vessel:
+  name: Vevey_schema_base
+  vessel_type: undefined
+simulation:
+  dt: 1
+solver:
+  mode: inverse
+profiles:
+- id: speed
+  kind: nav_speed
+  params:
+    acc: 0.05
+    allow_delay: true
+    dec: 0.05
+    v_croisiere: 6.944444444444445
+  select:
+    by: cruise
+    cruise_name: Translemanique
+  source: cgn_croisieres/all
+  unit: m/s
+- id: hotel
+  kind: constant
+  unit: W
+  value: 100000
+adapters:
+- id: P_connector_genset
+  kind: power_to_power_poly
+  params:
+    coeffs:
+    - 0
+    - 1
+  source: hotel
+  unit_in: W
+  unit_out: W
+- id: Vevey_P_from_speed
+  kind: speed_to_power_poly
+  params:
+    coeffs:
+    - 0
+    - -209
+    - 1904.4
+    - 531.36
+    - 93.312
+  source: speed
+  unit_in: m/s
+  unit_out: W
+- id: Vevey_eta_genset
+  kind: speed_to_eta_poly
+  params:
+    coeffs:
+    - 0.111383
+    - 0.035626
+    - 0.004367
+    - -0.000569
+  source: speed
+  unit_in: m/s
+  unit_out: '-'
+inputs:
+- id: P_connector_genset__to__Vevey_genset_in
+  bus: Vevey_genset_bus
+  source: P_connector_genset
+  sign: consume
+- id: Vevey_P_from_speed__to__elec_motor_in
+  bus: elec_motor_bus
+  source: Vevey_P_from_speed
+  sign: consume
+buses:
+- id: fuel_tank_bus
+- id: Vevey_genset_bus
+- id: elec_motor_bus
+converters:
+- from_bus: fuel_tank_bus
+  id: Vevey_genset
+  kind: variable_eta
+  params:
+    eta_default: 1
+    eta_source: Vevey_eta_genset
+  to_bus: Vevey_genset_bus
+- from_bus: Vevey_genset_bus
+  id: elec_motor
+  kind: constant_eta
+  params:
+    eta: 0.9
+  to_bus: elec_motor_bus
+storages:
+- bus: fuel_tank_bus
+  id: fuel_tank
+  initial_level:
+    unit: m3
+    value: 3.000000000000001
+  vector_energy: light_fuel
+  vector_params:
+    density_kg_m3: 840
+    pci_basis: volume
+    pci_value: 35279999999.99999
+    pci_volume_unit: J/m3

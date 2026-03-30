@@ -35,15 +35,17 @@ if __name__ == "__main__":
     # df_de["fuel_cum_m3"] = df_de["fuel_tank_e_cum_J"] / pci_mazout
     
     # ---- 2) Vapeur
-    df_steam, units_steam = process("config_steam.yaml", draw_dag=False)
+    # df_steam, units_steam = process("config_steam.yaml", draw_dag=False)
     # df_steam["fuel_cum_m3"] = df_steam["fuel_tank_e_cum_J"] / pci_mazout
     
     # ---- 3) Full-electrique
-    df_full_elec, units_full_elec = process("config_full_elec.yaml", draw_dag=False)
+    # df_full_elec, units_full_elec = process("config_full_elec.yaml", draw_dag=False)
     # df_full_elec["battery_pack_e_cum_kWh"] = df_full_elec["battery_pack_e_cum_J"] / j_to_kwh
     
     # ---- 4) H2 - pile combustible
-    df_h2, units_h2 = process("config_H2.yaml", draw_dag=False)
+    # df_h2, units_h2 = process("config_H2.yaml", draw_dag=False)
     # df_h2["h2_tank_e_cum_kWh"] = df_h2["h2_tank_e_cum_J"] / j_to_kwh
     # df_h2["h2_tank_masse_cum_kg"] = df_h2["h2_tank_e_cum_kWh"] / densite_energetique_h2
     
+    # ---- 5) Test UI
+    df_ui, units_ui = process("config_from_UI.yaml", draw_dag=False)
