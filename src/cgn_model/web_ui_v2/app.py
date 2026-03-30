@@ -1,10 +1,14 @@
 """Point d'entree UI V2 composants."""
+#
+# Lancement:
+# - mode normal (stable): cgnmodel-gui
+# - mode debug/dev:
+#   - PowerShell: $env:CGN_GUI_DEBUG='1'; cgnmodel-gui
+#   - CMD: set CGN_GUI_DEBUG=1 && cgnmodel-gui
 
 from __future__ import annotations
 
 import os
-import webbrowser
-from threading import Timer
 
 from dash import Dash
 
@@ -19,17 +23,17 @@ app.title = "CGN UI V2 - Composants"
 app.layout = build_layout()
 register_callbacks(app)
 
-
-def open_browser():
-    webbrowser.open_new("http://127.0.0.1:8050/")
+def _env_flag(name: str, default: bool = False) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def main():
-    debug = True
-
-    # # Evite l'ouverture en double avec le reloader Flask/Werkzeug
-    # if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-    #     Timer(1, open_browser).start()
+    # Par defaut en mode stable (pas de hot-reload intempestif).
+    # Override possible: CGN_GUI_DEBUG=1
+    debug = _env_flag("CGN_GUI_DEBUG", default=False)
 
     app.run(debug=debug, host="127.0.0.1", port=8050)
 
