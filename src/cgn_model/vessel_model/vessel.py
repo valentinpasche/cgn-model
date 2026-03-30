@@ -1128,6 +1128,8 @@ class Vessel:
                 return "s"
             if col.endswith("_W"):
                 return "W"
+            if col.endswith("_kWh"):
+                return "kWh"
             if col.endswith("_J"):
                 return "J"
             if col.endswith("_kg"):
@@ -1149,6 +1151,8 @@ class Vessel:
                 return col[:-2]
             if unit == "W" and col.endswith("_W"):
                 return col[:-2]
+            if unit == "kWh" and col.endswith("_kWh"):
+                return col[:-5]
             if unit == "J" and col.endswith("_J"):
                 return col[:-2]
             if unit == "kg" and col.endswith("_kg"):
@@ -1435,7 +1439,6 @@ converters:
     
     
     
-
 
 
 

@@ -57,6 +57,7 @@ class StorageResult:
     v_cum_m3: FArray | None = None
     v_dot_l_per_s: FArray | None = None
     v_cum_l: FArray | None = None
+    e_stock_kWh: FArray | None = None
     m_stock_kg: FArray | None = None
     v_stock_m3: FArray | None = None
     v_stock_l: FArray | None = None
@@ -111,6 +112,7 @@ class StorageResult:
         v_cum_m3: FArray | None = None
         v_dot_l_per_s: FArray | None = None
         v_cum_l: FArray | None = None
+        e_stock_kWh: FArray | None = None
         m_stock_kg: FArray | None = None
         v_stock_m3: FArray | None = None
         v_stock_l: FArray | None = None
@@ -159,6 +161,7 @@ class StorageResult:
                 )
 
         e_stock_J = initial_level_j + e_cum_J
+        e_stock_kWh = e_stock_J / 3_600_000.0
         if pci_j_per_kg is not None:
             m_stock_kg = e_stock_J / pci_j_per_kg
         elif pci_j_per_m3 is not None and density is not None and float(density) > 0:
@@ -188,6 +191,7 @@ class StorageResult:
             v_cum_m3=v_cum_m3,
             v_dot_l_per_s=v_dot_l_per_s,
             v_cum_l=v_cum_l,
+            e_stock_kWh=e_stock_kWh,
             m_stock_kg=m_stock_kg,
             v_stock_m3=v_stock_m3,
             v_stock_l=v_stock_l,
@@ -210,18 +214,14 @@ class StorageResult:
             "e_neg_J": self.e_neg_J,
             "e_stock_J": self.e_stock_J,
         }
+        if self.e_stock_kWh is not None:
+            data["e_stock_kWh"] = self.e_stock_kWh
         if self.m_dot_kg_per_s is not None:
             data["m_dot_kg_per_s"] = self.m_dot_kg_per_s
-        if self.m_cum_kg is not None:
-            data["m_cum_kg"] = self.m_cum_kg
         if self.v_dot_m3_per_s is not None:
             data["v_dot_m3_per_s"] = self.v_dot_m3_per_s
-        if self.v_cum_m3 is not None:
-            data["v_cum_m3"] = self.v_cum_m3
         if self.v_dot_l_per_s is not None:
             data["v_dot_l_per_s"] = self.v_dot_l_per_s
-        if self.v_cum_l is not None:
-            data["v_cum_l"] = self.v_cum_l
         if self.m_stock_kg is not None:
             data["m_stock_kg"] = self.m_stock_kg
         if self.v_stock_m3 is not None:
@@ -301,4 +301,3 @@ if __name__ == "__main__":
     
     print(f"Total J : {stor.total_J:,.0f}")
     print(f"Total kWh : {stor.total_kWh:,.3f}")
-
