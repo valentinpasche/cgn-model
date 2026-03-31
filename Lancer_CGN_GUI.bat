@@ -8,6 +8,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
+start "" "http://127.0.0.1:8050"
 cgnmodel-gui
 set "EXIT_CODE=%ERRORLEVEL%"
 
