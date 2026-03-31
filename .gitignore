@@ -8,8 +8,8 @@ build/
 dist/
 .pytest_cache/
 
-.vscode
-AGENTS.md
+/.vscode/
+/AGENTS.md
 
 # --- Données de tests : tout ignorer par défaut ---
 # /tests/private/*
