@@ -44,3 +44,7 @@ dependencies:
 
   # --- Packaging ---
   - pip
+  
+  # --- Instalation projet cgn_model---
+  # - pip install . # mode normal
+  # - pip install -e . # mode éditable
