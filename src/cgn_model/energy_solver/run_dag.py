@@ -153,6 +153,7 @@ def run_vector(solver: SolverDAG) -> None:
     Convention : profil > 0 = injection sur un bus, < 0 = demande.
     - mode "inverse" : couvre les deficits en aval (remonte la chaine).
     - mode "forward" : pousse les surplus amont vers l'aval (borne par le besoin).
+    - Les grandeurs propagees sont des puissances instantanees [W].
 
     Effets
     ------
@@ -166,6 +167,8 @@ def run_vector(solver: SolverDAG) -> None:
             bus_u = solver.buses[u]
             bus_v = solver.buses[v]
 
+            # En inverse, le deficit aval fixe la sortie requise; l'entree est
+            # calculee par le rendement inverse du convertisseur.
             need_v = _neg_mag(bus_v.net_w)              # besoin à v (déficit)
             p_out = need_v                               # on cherche à annuler le déficit
             p_in  = conv.inverse(p_out)
@@ -213,9 +216,26 @@ def run_vector(solver: SolverDAG) -> None:
 # Fonction utilitaire non utilisée pour l'instant dans le pipline global.
 def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
     """
-    Attache un profil d'efficacité η(t) à un convertisseur 'variable_eta'.
-    - eta_series : array-like 1D, valeurs attendues ~[0,1]
-    - A appeler après avoir construit les inputs (pour connaître N), et avant run_vector().
+    Attache un profil d'efficacite eta(t) a un convertisseur `variable_eta`.
+
+    Parameters
+    ----------
+    solver : SolverDAG
+        Solveur contenant le convertisseur cible.
+    conv_id : str
+        Identifiant du convertisseur a rendement variable.
+    eta_series : array-like
+        Profil 1D adimensionnel, valeurs attendues dans [0, 1].
+
+    Returns
+    -------
+    None
+        Le profil est attache par effet de bord sur le convertisseur.
+
+    Notes
+    -----
+    A appeler apres la construction des inputs, pour connaitre l'horizon
+    temporel N, et avant `run_vector`.
     """
     conv = solver.converters.get(conv_id)
     if conv is None:
@@ -235,7 +255,6 @@ def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
         eta = np.clip(eta, 0.0, 1.0)
     
     conv.eta_profile = eta
-
 
 
 

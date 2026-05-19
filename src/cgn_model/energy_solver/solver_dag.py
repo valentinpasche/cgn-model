@@ -107,6 +107,27 @@ class SolverDAG:
     # -------- Orchestration --------
     @classmethod
     def from_yaml(cls, cfg: str | dict[str, Any]) -> "SolverDAG":
+        """
+        Construit la structure complete du solver depuis une configuration.
+
+        Parameters
+        ----------
+        cfg : str | dict[str, Any]
+            YAML texte ou dictionnaire deja charge contenant les sections
+            `solver`, `buses`, `inputs` et `converters`.
+
+        Returns
+        -------
+        SolverDAG
+            Solveur initialise avec objets runtime, graphes NetworkX et plan
+            d'execution.
+
+        Notes
+        -----
+        Cette methode prepare la topologie et les objets, mais ne propage pas
+        encore les puissances. Les profils d'inputs sont appliques ensuite via
+        `prepare_state`.
+        """
         parsed = cls._parse_cfg(cfg)          # forme normalisée (+ fallback kind)
         cfg_model = cls._validate_cfg(parsed) # Pydantic
         buses, converters, inputs = cls._build_objects(cfg_model)
@@ -301,6 +322,24 @@ class SolverDAG:
     @staticmethod
     def _build_objects(cfg: Cfg
     ) -> tuple[dict[str, Bus], dict[str, ConverterABC], dict[str, Input]]:
+        """
+        Instancie les conteneurs runtime du solver.
+
+        Parameters
+        ----------
+        cfg : Cfg
+            Configuration Pydantic deja validee.
+
+        Returns
+        -------
+        tuple[dict[str, Bus], dict[str, ConverterABC], dict[str, Input]]
+            Dictionnaires indexes par ID pour les bus, convertisseurs et inputs.
+
+        Notes
+        -----
+        Les bus utilisent l'unite canonique W pour le bilan instantane. Les
+        convertisseurs ne contiennent pas encore de profils `p_in_w`/`p_out_w`.
+        """
         from .components import build_converter_from_cfg  # un seul import stable
         
         # 1) Buses
@@ -324,6 +363,28 @@ class SolverDAG:
         converters: dict[str, ConverterABC],
         inputs: dict[str, Input],
     ) -> Graphs:
+        """
+        Construit les graphes d'execution et de visualisation du solver.
+
+        Parameters
+        ----------
+        buses : dict[str, Bus]
+            Bus energetiques du modele.
+        converters : dict[str, ConverterABC]
+            Convertisseurs reliant `from_bus` vers `to_bus`.
+        inputs : dict[str, Input]
+            Inputs exogenes relies a un bus.
+
+        Returns
+        -------
+        Graphs
+            Graphe `exec` sans inputs virtuels et graphe `view` avec les inputs.
+
+        Raises
+        ------
+        ValueError
+            Si le graphe des convertisseurs contient un cycle.
+        """
         
         G = nx.DiGraph()
         for b in buses.values():
@@ -383,6 +444,23 @@ class SolverDAG:
         which: Literal["exec","view"] = "view", 
         pos: Pos | None = None
     ) -> None:
+        """
+        Affiche le DAG avec NetworkX/Matplotlib.
+
+        Parameters
+        ----------
+        which : {"exec", "view"}, optional
+            Graphe a afficher. `exec` contient seulement les bus et
+            convertisseurs; `view` ajoute les inputs virtuels.
+        pos : Pos | None, optional
+            Positions de noeuds deja calculees. Si None, utilise
+            `nx.spring_layout`.
+
+        Returns
+        -------
+        None
+            La figure est produite par Matplotlib via NetworkX.
+        """
         
         if which not in ("exec", "view"):
             raise ValueError(f"which invalide: {which!r}")
@@ -440,7 +518,6 @@ class SolverDAG:
         )
         
         return None    
-
 
 
 

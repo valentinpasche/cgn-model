@@ -28,6 +28,22 @@ class SimulationOutput:
 def run_simulation_from_yaml(yaml_text: str) -> SimulationOutput:
     """
     Execute la chaine standard `Vessel -> solver -> results_dataframe`.
+
+    Parameters
+    ----------
+    yaml_text : str
+        Configuration complete au format YAML.
+
+    Returns
+    -------
+    SimulationOutput
+        DataFrame de resultats, noms de colonnes, nombre de lignes et unites.
+
+    Notes
+    -----
+    Cette fonction represente le parcours nominal de l'UI : validation du YAML,
+    construction du vessel, preparation du solver, propagation vectorielle,
+    tally des stockages puis export tabulaire.
     """
     cfg = yaml.safe_load(yaml_text)
     vessel = Vessel.from_yaml(cfg)

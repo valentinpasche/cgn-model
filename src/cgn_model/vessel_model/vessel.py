@@ -278,6 +278,30 @@ def _pick_master_id(profiles_cfg: list[ProfileCfg]) -> str:
     )
 
 def _apply_sign_policy(arr: FArray, policy: str, scale: float | int | None) -> FArray:
+    """
+    Applique la convention de signe d'un input avant injection dans le solver.
+
+    Parameters
+    ----------
+    arr : FArray
+        Signal 1D source, dans son unite courante apres conversion eventuelle.
+    policy : {"consume", "inject", "as_is"}
+        Convention de signe cote bus solver.
+        ``consume`` rend le profil negatif, ``inject`` le rend positif et
+        ``as_is`` conserve le signe fourni.
+    scale : float | int | None
+        Facteur multiplicatif optionnel applique avant la convention de signe.
+
+    Returns
+    -------
+    FArray
+        Signal signe selon la convention du bilan de bus.
+
+    Notes
+    -----
+    La convention numerique du solver est : puissance positive = injection sur
+    un bus, puissance negative = demande ou retrait sur ce bus.
+    """
     arr = np.asarray(arr, dtype=np.float64)
     if scale is not None:
         arr = arr * float(scale)
@@ -631,9 +655,31 @@ class Vessel:
 # -------- Builders runtime --------    
     @staticmethod
     def _build_profiles(cfg_profiles: list[ProfileCfg], dt: float) -> dict[str, Profile]:
+        """
+        Construit les profils runtime et harmonise leur longueur temporelle.
+
+        Parameters
+        ----------
+        cfg_profiles : list[ProfileCfg]
+            Profils declares dans le YAML (constant, series, file ou nav_speed).
+        dt : float
+            Pas de temps global [s], transmis aux profils de navigation.
+
+        Returns
+        -------
+        dict[str, Profile]
+            Profils 1D prets a alimenter les adapters ou les inputs.
+
+        Notes
+        -----
+        Le profil maitre fixe la longueur N. Les profils constants sont etendus
+        a cette longueur, tandis que les series/fichiers doivent deja avoir la
+        meme longueur.
+        """
         profiles: dict[str, Profile] = {}
     
-        # --- 1) choisir et construire le maître (une seule fois)
+        # Le maitre fixe l'horizon temporel N sans construire plusieurs fois
+        # un profil de navigation potentiellement couteux.
         master_id = _pick_master_id(cfg_profiles)
         master_obj = next(p for p in cfg_profiles if p.id == master_id)
     
@@ -707,11 +753,37 @@ class Vessel:
 
     @staticmethod
     def _build_adapters(cfg_adapters: list[AdapterCfg]) -> dict[str, AdapterABC]:
+        """
+        Instancie les adapters runtime depuis les configurations validees.
+
+        Parameters
+        ----------
+        cfg_adapters : list[AdapterCfg]
+            Configurations d'adapters issues du YAML.
+
+        Returns
+        -------
+        dict[str, AdapterABC]
+            Adapters indexes par ID.
+        """
         adapters = {a.id: build_adapter_from_cfg(a) for a in cfg_adapters}
         return adapters
 
     @staticmethod
     def _build_input_binds(cfg_inputs: list[InputBindCfg]) -> list[InputBind]:
+        """
+        Convertit les bindings YAML en dataclasses runtime.
+
+        Parameters
+        ----------
+        cfg_inputs : list[InputBindCfg]
+            Liaisons input solver -> signal source.
+
+        Returns
+        -------
+        list[InputBind]
+            Bindings conservant bus, source, convention de signe et scale.
+        """
         binds: list[InputBind] = []
         for b in cfg_inputs:
             # Construire les kwargs sans 'scale' si absent -> la dataclass appliquera 1.0
@@ -773,6 +845,31 @@ class Vessel:
         verbose: bool = False,
         auto_convert: bool = False,
     ) -> dict[str, FArray] | dict[str, tuple[str, FArray]]:
+        """
+        Prepare les profils d'inputs attendus par `prepare_state`.
+
+        Parameters
+        ----------
+        profiles_only : bool, optional
+            Si True, retourne uniquement ``{input_id: array}``. Sinon retourne
+            ``{input_id: (bus_id, array)}`` pour permettre le controle du bus.
+        verbose : bool, optional
+            Affiche un resume des profils construits.
+        auto_convert : bool, optional
+            Convertit automatiquement vers W lorsque la source n'est pas deja
+            dans l'unite du solver.
+
+        Returns
+        -------
+        dict[str, FArray] | dict[str, tuple[str, FArray]]
+            Profils 1D signes en W, indexes par ID d'input solver.
+
+        Notes
+        -----
+        Les signes sont appliques ici : ``consume`` produit une puissance
+        negative, ``inject`` une puissance positive et ``as_is`` conserve le
+        signal source.
+        """
         if self.signals is None or self.input_binds is None:
             raise RuntimeError("Vessel non initialisé (signals/input_binds manquants).")
     
@@ -972,6 +1069,23 @@ class Vessel:
         auto_convert_w_profile: bool = False,
         clip_eta_profile: bool = True,
     ) -> None:
+        """
+        Orchestration courte pour preparer le solver interne.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Affiche les informations de cablage.
+        auto_convert_w_profile : bool, optional
+            Active la conversion automatique des profils vers W.
+        clip_eta_profile : bool, optional
+            Borne les profils de rendement eta(t) dans l'intervalle admissible.
+
+        Notes
+        -----
+        Cette methode applique les inputs au solver et attache les profils de
+        rendement variables. Elle ne lance pas `run_vector`.
+        """
         self.apply_inputs_to_solver(
             verbose=verbose,
             auto_convert=auto_convert_w_profile,
@@ -1443,7 +1557,6 @@ converters:
     
     
     
-
 
 
 

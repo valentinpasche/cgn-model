@@ -343,6 +343,9 @@ class SpeedToPowerPolyAdapter(AdapterABC):
     -----
     - P(v) = a0 + a1*v + a2*v^2 + ...
     - Conversion d'unites automatique vers unit_in.
+    - Les coefficients sont appliques dans l'unite `unit_in`; leur domaine de
+      validite physique doit venir de la configuration ou de la documentation
+      metier externe.
     """
     id: str
     source: str
@@ -413,6 +416,8 @@ class ForceAndSpeedToPowerAdapter(AdapterABC):
     -----
     - Ignore source top-level d'AdapterCfg.
     - P = F * v (en SI, W).
+    - La convention de signe n'est pas appliquee dans l'adapter; elle est
+      appliquee plus tard par le binding d'input du `Vessel`.
     """
     id: str
     source: str
@@ -480,6 +485,8 @@ class SpeedToForcePoly(AdapterABC):
     -----
     - F(v) = a0 + a1*v + a2*v^2 + ...
     - Conversion d'unites automatique vers unit_in.
+    - Les coefficients sont supposes compatibles avec `unit_in`; leur origine
+      et leur plage de validite ne sont pas encodees ici.
     """
     id: str
     source: str
@@ -536,6 +543,8 @@ class SpeedToEtaPoly(AdapterABC):
     -----
     - eta(v) = a0 + a1*v + a2*v^2 + ...
     - Sortie adimensionnelle pour autowire dans VariableEtaConverter.
+    - Le bornage eventuel de eta(t) est realise lors de l'attachement au
+      convertisseur, pas dans cet adapter.
     """
     id: str
     source: str
@@ -592,6 +601,7 @@ class PowerToPowerPolyAdapter(AdapterABC):
     -----
     - P(p) = a0 + a1*p + a2*p^2 + ...
     - Conversion d'unites automatique vers unit_in.
+    - Les coefficients sont interpretes dans l'unite de puissance `unit_in`.
     """
     id: str
     source: str

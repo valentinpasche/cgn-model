@@ -1,4 +1,18 @@
 ﻿
+"""
+Modeles Pydantic exposes par l'interface web UI v2.
+
+Les classes de ce module decrivent les formulaires de composants et de
+schemas. Elles servent de couche de saisie/validation UI avant compilation
+vers le YAML consomme par `Vessel` et `SolverDAG`.
+
+Notes
+-----
+Les unites declarees ici doivent rester coherentes avec les conversions du
+coeur `vessel_model`. Les conventions de signe visibles dans l'UI sont les
+memes que dans les bindings d'inputs : `consume`, `inject`, `as_is`.
+"""
+
 from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 from dash_pydantic_utils import Quantity

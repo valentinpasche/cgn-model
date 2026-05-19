@@ -90,7 +90,37 @@ class StorageResult:
         initial_level: dict[str, Any] | None = None,
     ) -> "StorageResult":
         """
-        Construit le tally à partir du signal net_w d'un bus et du pas dt.
+        Construit le tally a partir du signal net_w d'un bus et du pas dt.
+
+        Parameters
+        ----------
+        id : str
+            Identifiant du stockage.
+        bus_id : str
+            Identifiant du bus solver associe.
+        bus_net_w : FArray
+            Puissance nette signee du bus [W].
+        dt : float
+            Pas de temps [s].
+        vector : str | None, optional
+            Nom du vecteur energetique, conserve comme metadonnee.
+        vector_params : dict[str, Any] | None, optional
+            Parametres de PCI et densite pour convertir energie en masse ou
+            volume.
+        initial_level : dict[str, Any] | None, optional
+            Niveau initial, exprime en energie, masse ou volume.
+
+        Returns
+        -------
+        StorageResult
+            Series temporelles de puissance, energie cumulee et niveau de
+            stockage derive.
+
+        Notes
+        -----
+        La puissance `bus_net_w` reste signee. Les colonnes positives et
+        negatives sont des decompositions de post-traitement, sans clip du
+        bilan net.
         """
         if dt <= 0:
             raise ValueError("dt doit être > 0")
@@ -148,6 +178,8 @@ class StorageResult:
                 m_dot_kg_per_s = v_dot_m3_per_s * float(density)
                 m_cum_kg = np.cumsum(m_dot_kg_per_s) * float(dt)
 
+        # Les niveaux initiaux en masse/volume ne sont convertibles que si les
+        # parametres PCI/densite permettent de revenir a une energie [J].
         if isinstance(initial_level, dict):
             raw_value = initial_level.get("value")
             raw_unit = initial_level.get("unit")
@@ -199,9 +231,19 @@ class StorageResult:
 
     def to_dataframe(self):
         """
-        Retourne un pandas.DataFrame avec les colonnes standardisées :
-          - 't_s', 'p_W', 'p_pos_W', 'p_neg_W', 'e_cum_J', 'e_pos_J', 'e_neg_J'
-        (Import local pour ne pas imposer pandas si non utilisé ailleurs.)
+        Retourne un pandas.DataFrame avec les colonnes standardisees.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Colonnes de base `t_s`, `p_W`, `p_pos_W`, `p_neg_W`, `e_cum_J`,
+            `e_pos_J`, `e_neg_J`, `e_stock_J`, puis colonnes derivees si le
+            vecteur energetique fournit PCI/densite.
+
+        Notes
+        -----
+        Import local de pandas pour ne pas l'imposer aux usages qui ne font que
+        construire les objets de calcul.
         """
         import pandas as pd  # type: ignore
         data: dict[str, FArray] = {

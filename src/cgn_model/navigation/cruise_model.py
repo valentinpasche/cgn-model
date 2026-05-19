@@ -73,6 +73,19 @@ def format_profile_summary(profile: np.ndarray | None, values: bool = False) -> 
     )
 
 def _cgn_croisiere_csv_path(filename: str) -> Path:
+    """
+    Retourne le chemin d'un CSV de croisiere embarque dans le package.
+
+    Parameters
+    ----------
+    filename : str
+        Nom du fichier CSV dans `navigation/data/cgn_croisieres`.
+
+    Returns
+    -------
+    pathlib.Path
+        Chemin resolu via `importlib.resources`.
+    """
     # -> src/cgn_model/navigation/data/cgn_croisieres/<filename>
     return (
         resources.files("cgn_model.navigation")
@@ -81,6 +94,25 @@ def _cgn_croisiere_csv_path(filename: str) -> Path:
 
 @dataclass(slots=True)
 class SpeedProfileParams:
+    """
+    Parametres de generation MRUA d'un profil de vitesse.
+
+    Attributes
+    ----------
+    dt : float
+        Pas de discretisation temporelle [s].
+    acc : float
+        Acceleration longitudinale pendant la phase de depart [m/s2].
+    dec : float
+        Deceleration longitudinale pendant la phase d'arrivee [m/s2].
+    v_croisiere : float
+        Vitesse maximale visee pendant le palier de croisiere [m/s].
+    v_moyenne_horaire : float | None
+        Vitesse moyenne de reference optionnelle [m/s].
+    allow_delay : bool
+        Si True, autorise un retard lorsque l'horaire est physiquement
+        impossible avec les parametres MRUA.
+    """
     dt: float = 1.0                  # [s]
     acc: float = 0.04                # [m/s²]
     dec: float = 0.04                # [m/s²]
@@ -189,6 +221,14 @@ class Etape:
             Profil 1D de vitesse [m/s].
         int | None
             Retard restant en pas de temps.
+
+        Notes
+        -----
+        Le profil est construit avec une hypothese MRUA longitudinale :
+        acceleration constante, palier eventuel a `v_croisiere`, puis
+        deceleration constante. Si la distance est trop courte pour atteindre
+        `v_croisiere`, le profil devient triangulaire et utilise une vitesse de
+        pointe inferieure.
         """
         def _catch_n_delay(n_current: int, n_delay: int) -> tuple[int, int, int]:
             " Reprise du retard possible "
@@ -468,6 +508,12 @@ class Course:
             Profil de vitesse de la course.
         int | None
             Retard restant en pas de temps.
+
+        Notes
+        -----
+        Les profils d'etapes sont concatenes dans l'ordre de la course. Le
+        retard eventuel est transporte en nombre de pas `dt` pour permettre sa
+        reprise sur les pauses suivantes.
         """
         if params is None:
             params = SpeedProfileParams()
@@ -656,6 +702,26 @@ class Croisiere:
     # --- Construction à partir d'un DataFrame ---
     @classmethod
     def from_df(cls, df: pd.DataFrame) -> list[Croisiere]:
+        """
+        Construit les croisieres depuis un DataFrame horaire CGN.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Table contenant au minimum les colonnes `croisiere`, `course`,
+            `port`, `horaire`, `km` et `minutes`.
+
+        Returns
+        -------
+        list[Croisiere]
+            Croisieres groupees par nom, avec courses et pauses ordonnees.
+
+        Notes
+        -----
+        Les distances sont lues en kilometres [km] et les durees en minutes.
+        Une ligne a 0 km lors d'un changement de course est interpretee comme
+        une pause entre deux courses.
+        """
         df = df.copy()
 
         # Compléter croisiere / course vers le bas
@@ -721,6 +787,26 @@ class Croisiere:
     # --- Variante pratique: directement depuis le CSV ---
     @classmethod
     def from_csv(cls, path: str, sep: str = ";") -> list[Croisiere]:
+        """
+        Charge un fichier CSV horaire et construit les croisieres.
+
+        Parameters
+        ----------
+        path : str
+            Chemin du fichier CSV.
+        sep : str, optional
+            Separateur de colonnes, par defaut `;`.
+
+        Returns
+        -------
+        list[Croisiere]
+            Croisieres issues du fichier.
+
+        Notes
+        -----
+        La colonne `horaire` est parse comme heure locale naive au format
+        `HHhMM`; aucune date civile ni fuseau horaire n'est porte par le modele.
+        """
         df = pd.read_csv(path, sep=sep)
         # Supprimer les lignes entièrement vides (toutes colonnes NA)
         df = df.dropna(how="all")
@@ -784,6 +870,11 @@ class Croisiere:
             Profil de vitesse de la croisiere.
         int | None
             Retard restant en pas de temps.
+
+        Notes
+        -----
+        Les courses et pauses sont parcourues selon `trajet`, c'est-a-dire dans
+        l'ordre chronologique reconstruit depuis les horaires.
         """
         if params is None:
             params = SpeedProfileParams()
