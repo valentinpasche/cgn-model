@@ -1,4 +1,4 @@
-"""Callbacks UI V2 composants (DB-only)."""
+"""Callbacks interface web V2 (DB-only)."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ from pydantic import ValidationError
 
 from cgn_model.web_mvp.services.dag_mermaid import yaml_to_mermaid
 from cgn_model.web_mvp.services.simulation import run_simulation_from_yaml
-from cgn_model.web_ui_v2.components_basemodel import COURSES_NUMBER
-from cgn_model.web_ui_v2.components_registry import (
+from cgn_model.web_ui_v2.models import COURSES_NUMBER
+from cgn_model.web_ui_v2.registry import (
     AIO_ID,
     FORM_ID,
     SCHEMA_AIO_ID,

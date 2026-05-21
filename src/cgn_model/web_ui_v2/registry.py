@@ -1,4 +1,4 @@
-"""Registry et helpers de gestion composants UI V2."""
+"""Registry et helpers de gestion composants interface web V2."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from dash_pydantic_form import ModelForm, fields
 from dash_pydantic_utils import Quantity
 from pydantic import BaseModel
 
-from cgn_model.web_ui_v2.components_basemodel import (
+from cgn_model.web_ui_v2.models import (
     COURSES_NUMBER,
     ConstantProfile,
     ConstantEtaConverter,

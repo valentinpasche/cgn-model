@@ -1,4 +1,4 @@
-"""Layout UI V2 composants."""
+"""Layout interface web V2."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import dash_mantine_components as dmc
 from dash import dcc, html
 from dash_extensions import Mermaid
 
-from cgn_model.web_ui_v2.components_registry import (
+from cgn_model.web_ui_v2.registry import (
     TYPE_OPTIONS,
     model_options,
     render_form,

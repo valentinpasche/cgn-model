@@ -1,6 +1,5 @@
-﻿
-"""
-Modeles Pydantic exposes par l'interface web UI v2.
+﻿"""
+Modeles Pydantic exposes par l'interface web V2.
 
 Les classes de ce module decrivent les formulaires de composants et de
 schemas. Elles servent de couche de saisie/validation UI avant compilation
