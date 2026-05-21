@@ -4,12 +4,6 @@ Ambiguites restantes a documenter sans modifier le comportement numerique.
 
 ## Conventions physiques
 
-- Preciser le sens metier exact des bus `from_bus` et `to_bus` pour chaque
-  chaine energetique de reference. Le code les utilise comme sens nominal du
-  convertisseur, mais la convention physique complete doit etre validee cote
-  metier.
-- Clarifier l'interpretation des `carrier` (`Electrical`, `Mechanical`,
-  `Chemical`) au-dela de l'unite canonique actuelle [W].
 - Documenter explicitement que le mode solver `forward` est present dans la
   structure mais marque non verifie dans `run_vector`.
 

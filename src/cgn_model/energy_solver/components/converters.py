@@ -1,97 +1,73 @@
 # cgn_model/energy_solver/components/converters.py
 
 """
-Registry des convertisseurs + contrat de base (ConverterABC).
+Convertisseurs energetiques du `SolverDAG` et registre de construction.
 
-Ce module est le SEUL endroit à modifier quand vous ajoutez un nouveau
-type de convertisseur. Le reste du système (config, solver_dag) n'a pas
-besoin d'être changé.
+Role du module
+--------------
+Ce module contient le contrat runtime des convertisseurs et le registre qui
+associe un `kind` YAML a une implementation Python. Un convertisseur relie un
+bus `from_bus` a un bus `to_bus` et fournit deux operations vectorielles :
 
-# Rôle
-- Fournit le contrat nominal `ConverterABC` (méthodes `forward`/`inverse`).
-- Expose un **registre** de convertisseurs (clé `kind` -> (ParamsModel, builder)).
-- Valide les paramètres spécifiques via un **modèle Pydantic** par type.
-- Construit une instance concrète via `build_converter_from_cfg(c)` à partir
-  d'un élément `ConverterCfg` (id, from_bus, to_bus, kind, params).
+- `forward(p_in_w)` : calcule la puissance de sortie a partir d'une puissance
+  prelevee sur `from_bus`;
+- `inverse(p_out_w)` : calcule la puissance d'entree necessaire pour obtenir
+  une puissance cible sur `to_bus`.
 
-# Flux de configuration (YAML)
-Un convertisseur se décrit ainsi :
+Les puissances sont exprimees en watts [W]. La convention de bilan utilisee par
+`run_dag` est : `p_in_w` est un retrait sur le bus amont, `p_out_w` est une
+injection sur le bus aval.
+
+Le sens `from_bus` -> `to_bus` correspond au sens physique nominal de la
+conversion energetique. Par exemple, un moteur thermique preleve une puissance
+chimique sur un bus `Chemical:*` (`from_bus`) pour fournir une puissance
+mecanique sur un bus `Mechanical:*` (`to_bus`). Dans le DAG, les `carrier`
+restent des metadonnees descriptives; les bilans internes sont bloques en W.
+
+Convertisseurs fournis
+----------------------
+- `constant_eta` : rendement constant `eta`, avec `0 < eta <= 1`.
+- `variable_eta` : rendement temporel optionnel `eta_profile`; si aucun profil
+  n'est attache, le convertisseur utilise `eta_default`. Le champ `eta_source`
+  reference le signal adimensionnel qui peut etre attache par `Vessel`.
+
+Flux YAML
+---------
+Un convertisseur se declare dans la section `converters` :
 
     converters:
       - id: "genset"
         from_bus: "Chemical:fuel"
-        to_bus:   "Electrical:main"
+        to_bus: "Electrical:main"
         kind: "constant_eta"
         params:
           eta: 0.45
 
-**Compat retro** : si `kind` est omis mais qu'un `eta` top-level est présent,
-`solver_dag._parse_cfg` migre vers :
-    kind="constant_eta", params={"eta": ...}
-et émet un `warnings.warn`.
+Compatibilite historique : `solver_dag._parse_cfg` migre encore un champ `eta`
+top-level vers `kind="constant_eta"` et `params={"eta": ...}`.
 
-# Comment AJOUTER un nouveau type
-1) **Définir** un modèle de paramètres (Pydantic) :
-    class MyParams(ConverterParams):
-        alpha: float = Field(gt=0)
+Registre et extension
+---------------------
+Le registre interne `REGISTRY` mappe `kind -> (ParamsModel, builder)`.
+`build_converter_from_cfg(c)` lit `c.kind`, valide `c.params` avec le modele
+Pydantic associe, puis appelle le builder.
 
-2) **Implémenter** la classe concrète :
-    @dataclass
-    class MyConverter(ConverterABC):
-        id: str
-        from_bus: str
-        to_bus: str
-        alpha: float
-        p_in_w:  FArray | None = field(default=None, init=False)
-        p_out_w: FArray | None = field(default=None, init=False)
-        def forward(self, p_in_w: FArray) -> FArray:
-            # ... votre logique ...
-            return p_in_w * self.alpha
-        def inverse(self, p_out_w: FArray) -> FArray:
-            # ... votre logique inverse ...
-            return p_out_w / self.alpha
+Pour ajouter un convertisseur dans le coeur solver :
 
-3) **Enregistrer** le type avec un builder :
-    @register("my_kind", MyParams)
-    def build_my_kind(id: str, from_bus: str, to_bus: str, params: MyParams) -> ConverterABC:
-        return MyConverter(id=id, from_bus=from_bus, to_bus=to_bus, alpha=params.alpha)
+1. definir un modele de parametres derive de `ConverterParams`;
+2. implementer une classe qui respecte `ConverterABC`;
+3. enregistrer un builder avec `@register("nouveau_kind", ParamsModel)`.
 
-C'est tout. Le `SolverDAG` sait déjà construire vos convertisseurs via
-`build_converter_from_cfg`, en fonction de `kind`.
+Si ce nouveau convertisseur doit aussi etre cree depuis l'interface web ou
+documente pour les utilisateurs YAML, il faudra mettre a jour les couches UI,
+les exemples et la documentation externe correspondants.
 
-# API exposée
-- class ConverterABC(ABC):
-    - `forward(p_in_w: FArray) -> FArray` : applique la conversion du bus `from_bus`
-      vers `to_bus`. **Convention** : `p_in_w` représente un retrait sur `from_bus`,
-      `p_out_w` (résultat) une injection sur `to_bus`. Unités en watts (W), shape
-      vectorielle autorisée (broadcast NumPy).
-    - `inverse(p_out_w: FArray) -> FArray` : conversion inverse (utile pour le mode
-      solveur "inverse").
-
-- class ConverterParams(BaseModel):
-    - Base pour les modèles Pydantic de paramètres spécifiques. `extra="forbid"`
-      empêche les fautes de frappe.
-
-- decorator `@register(kind: str, params_model: type[ConverterParams])`
-    - Associe un identifiant de type (ex. "constant_eta") à (ParamsModel, builder).
-    - Le builder reçoit `(id, from_bus, to_bus, params)` et doit retourner un `ConverterABC`.
-
-- function `build_converter_from_cfg(c: ConverterCfg) -> ConverterABC`
-    - Valide `c.params` avec le `ParamsModel` du `kind`, instancie le convertisseur
-      via le builder enregistré.
-    - Lève `NotImplementedError` si `kind` est inconnu (liste des kinds dispo dans le message).
-
-# Bonnes pratiques
-- Gardez vos builders **purs** (pas d'effets de bord).
-- Validez toute contrainte de domaine dans le `ParamsModel` (ex. bornes, tailles).
-- Pour forcer un dtype homogène, vous pouvez convertir en `np.asarray(x, dtype=np.float64)`
-  dans vos implémentations.
-- Si vous ajoutez plusieurs convertisseurs, préférez des noms `kind` explicites
-  et documentez les champs attendus dans `params`.
-
-# Types
-- `FArray` = `NDArray[np.floating]` (profil(s) vectoriels). Si vous voulez imposer
-  float64, remplacez par `NDArray[np.float64]`.
+Bonnes pratiques
+----------------
+- Garder les builders sans effet de bord.
+- Valider les bornes physiques dans le modele Pydantic.
+- Documenter les unites et le domaine de validite des parametres.
+- Conserver des noms de `kind` explicites et stables.
 """
 
 from __future__ import annotations
@@ -351,8 +327,6 @@ def build_variable_eta(id: str, from_bus: str, to_bus: str, params: VariableEtaP
         eta=params.eta_default,
         eta_source=params.eta_source
     )
-
-
 
 
 

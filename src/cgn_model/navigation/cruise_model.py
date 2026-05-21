@@ -232,6 +232,9 @@ class Etape:
         """
         def _catch_n_delay(n_current: int, n_delay: int) -> tuple[int, int, int]:
             " Reprise du retard possible "
+            # TODO: confirmer la regle metier lorsqu'une pause est plus courte
+            # que le retard a rattraper; le calcul actuel retire `n_current %
+            # n_delay - 1`, ce qui merite une validation operationnelle.
             if n_delay == 0:
                 return (n_current, n_delay, 0)
             # Garder une pause de 1*dt, si pause = delay
@@ -300,7 +303,9 @@ class Etape:
         d = float(dec)
         v_max = float(v_croisiere)
 
-        # 2) distance nécessaire pour accel + decel à v_max
+        # Distance minimale pour atteindre v_max puis revenir a 0 avec les
+        # accelerations imposees. Elle separe les profils trapezoidaux et
+        # triangulaires.
         d_acc_dec = v_max**2 / (2 * a) + v_max**2 / (2 * d)
 
         if distance_m >= d_acc_dec:
@@ -343,7 +348,10 @@ class Etape:
                     RuntimeWarning,
                 )
 
-        # Temps total du profil (incluant éventuellement le retard)
+        # Si l'horaire est plus long que le temps physique minimal, le surplus
+        # est place sous forme de vitesse nulle avant/apres la navigation.
+        # TODO: confirmer que la repartition 50/50 du slack est la convention
+        # operationnelle voulue pour tous les trajets.
         if t_sched >= T_phys:
             slack = t_sched - T_phys
             slack_before = slack / 2.0
@@ -393,12 +401,11 @@ class Etape:
         if v[-1] != 0:
             v[-1] = 0
 
-        # 6) Optionnel : contrôle vs v_moyenne_horaire
+        # Ce controle ne modifie pas le profil; il signale seulement un ecart
+        # important entre le modele MRUA et une vitesse moyenne de reference.
+        # TODO: confirmer que la tolerance relative de 20% est un seuil metier.
         if v_moyenne_horaire is not None and T_phys > 0:
             v_nav = distance_m / T_phys  # [m/s]
-            # si tu veux, tu peux mettre un warning si on est trop loin
-            # du paramètre "macro" v_moyenne_horaire.
-            # Exemple (tolérance 20%) :
             ratio = abs(v_nav - v_moyenne_horaire) / v_moyenne_horaire
             if ratio > 0.2:
                 warnings.warn(
@@ -730,7 +737,8 @@ class Croisiere:
 
         croisieres: list[Croisiere] = []
 
-        # Un objet Croisiere par valeur de "croisiere"
+        # Le CSV est interprete par transitions ligne i -> ligne i+1: chaque
+        # ligne porte le depart, la distance et la duree vers le port suivant.
         for croisiere_nom, df_croi in df.groupby("croisiere", sort=False):
             df_croi = df_croi.reset_index(drop=True)
 
@@ -765,7 +773,8 @@ class Croisiere:
                 course_i = int(row_i.course)
                 course_j = int(row_j.course)
 
-                # Pause entre deux courses (0 km + changement de n° de course)
+                # Une etape 0 km lors d'un changement de numero de course est
+                # rangee dans les pauses inter-courses plutot que dans la course.
                 if etape.is_pause and course_i != course_j:
                     pauses.append(etape)
                 else:

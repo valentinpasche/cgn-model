@@ -119,7 +119,8 @@ def prepare_state(
     if N is None:
         raise ValueError("Aucun profil fourni à prepare_state().")
 
-    # 2) Réinitialiser l'état des bus
+    # Chaque appel repart d'un etat vierge: les profils d'input sont la seule
+    # source de net_w initiale, et le ledger garde la trace par contribution.
     for b in solver.buses.values():
         b.net_w = np.zeros(N, dtype=float)
         b.ledger.clear()
@@ -129,7 +130,8 @@ def prepare_state(
         c.p_in_w = np.zeros(N, dtype=float)
         c.p_out_w = np.zeros(N, dtype=float)
 
-    # 4) Attacher/appliquer les inputs et logger sur les bus
+    # Les inputs sont deja signes par Vessel: ici on additionne simplement les
+    # puissances [W] sur leur bus cible.
     for input_id, arr in prepared.items():
         s = solver.inputs[input_id]
         s.profile = arr
@@ -173,7 +175,8 @@ def run_vector(solver: SolverDAG) -> None:
             p_out = need_v                               # on cherche à annuler le déficit
             p_in  = conv.inverse(p_out)
 
-            # applique
+            # Effet bilan: l'amont fournit p_in (retrait, donc -p_in), l'aval
+            # recoit p_out (injection, donc +p_out).
             conv.p_in_w  += p_in
             conv.p_out_w += p_out
             bus_u.net_w  -= p_in
@@ -186,6 +189,8 @@ def run_vector(solver: SolverDAG) -> None:
             bus_v.ledger[f"conv_in:{conv_id}"] += p_out
 
     elif solver.mode == "forward":
+        # TODO: valider le mode forward sur un cas physique de reference avant
+        # de retirer cette protection.
         # Protection calcul non vérifié, à supprimer en temps voulu.
         raise NotImplementedError(f"Mode solver `{solver.mode!r}` non vérifié. Ne pas utiliser pour l'instant.")
         
@@ -255,7 +260,6 @@ def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
         eta = np.clip(eta, 0.0, 1.0)
     
     conv.eta_profile = eta
-
 
 
 

@@ -707,7 +707,9 @@ class Vessel:
         N = int(data.shape[0])
         profiles[master_obj.id] = Profile(id=master_obj.id, unit=master_obj.unit, data=data)
     
-        # --- 2) construire les autres profils en s'alignant sur N
+        # Les profils non maitres doivent partager l'horizon N. Une constante
+        # scalaire est diffusee sur N; une serie explicite doit deja avoir N
+        # points pour eviter une interpolation implicite.
         for p in cfg_profiles:
             if p.id == master_id:
                 continue
@@ -823,9 +825,10 @@ class Vessel:
             for aid, adapter in remaining.items():
                 req = adapter.required_sources()
                 if all(sid in signals for sid in req):
-                    # construire inputs -> (array, unit)
+                    # Les adapters sont materialises uniquement quand toutes
+                    # leurs sources sont deja disponibles; cela donne un ordre
+                    # topologique sans dupliquer la logique de validation.
                     inputs = {sid: signals[sid] for sid in req}
-                    # multi-entrées si surchargé, sinon mono-entrée via apply
                     out_series, out_unit = adapter.apply_multi(inputs)
                     signals[aid] = (out_series, out_unit)
                     progressed.append(aid)
@@ -914,10 +917,13 @@ class Vessel:
             if not np.isfinite(arr_w).all():
                 raise ValueError(f"Profil {bind.id!r}: valeurs non finies (NaN/Inf) détectées.")
     
-            # sign/scale (policy)
+            # La convention de signe est appliquee au dernier moment avant le
+            # solver, pour garder les profils/adapters en grandeurs physiques
+            # positives quand c'est leur representation naturelle.
             arr_signed = _apply_sign_policy(arr_w, bind.sign, bind.scale)
             
-            # contrôle du signe attendu
+            # Controle informatif: apres application de la convention, un
+            # profil consume devrait etre <= 0 et un profil inject >= 0.
             if bind.sign in ("consume", "inject"):
                 total, wrong, frac = _warn_inconsistent_sign(arr_signed, bind.sign)
                 if verbose:
@@ -1021,7 +1027,8 @@ class Vessel:
                 N = len(b.net_w)
                 break
 
-        # Collecte des signaux dimensionnels ('-')
+        # Seuls les signaux adimensionnels sont candidats pour eta(t). Les
+        # profils avec unite physique restent dans le chemin d'input classique.
         eta_signals: dict[str, FArray] = {}
         for sid, (arr, unit) in self.signals.items():
             if unit == "-":
@@ -1130,7 +1137,8 @@ class Vessel:
                     "As-tu appelé apply_inputs_to_solver() (et éventuellement run_vector()) ?"
                 )
 
-            # Compat: nouveau nom vector_energy, fallback ancien vecteur.
+            # Compat YAML: le nom canonique est `vector_energy`, mais les
+            # anciennes configurations peuvent encore fournir `vecteur`.
             vector_name = getattr(scfg, "vector_energy", None)
             if vector_name is None:
                 vector_name = getattr(scfg, "vecteur", None)
@@ -1152,7 +1160,9 @@ class Vessel:
                 bus_id=scfg.bus,
                 bus_net_w=bus.net_w,
                 dt=self.dt,
-                vector=vector_name,  # juste mémorisé, pas utilisé par le tally générique
+                # Le nom du vecteur est une metadonnee; les conversions viennent
+                # des parametres PCI/densite transmis juste en dessous.
+                vector=vector_name,
                 vector_params=vector_params_dict,
                 initial_level=initial_level_dict,
             )
@@ -1347,7 +1357,9 @@ class Vessel:
                     s_cols.append(c)
                 storage_cols_by_id[stor_id] = s_cols
 
-        # Guardrails when ids=None: on veut tout, donc exiger la presence des blocs manquants
+        # Quand aucun filtre n'est donne, l'utilisateur demande un export complet:
+        # on exige donc que les inputs, convertisseurs et stockages configures
+        # aient deja ete calcules.
         if ids is None:
             if t is None:
                 raise RuntimeError("Vecteur temps indisponible. Lancez le solver ou construisez les signaux.")
@@ -1364,7 +1376,8 @@ class Vessel:
                     "Stockages configures mais non calcules. Appelez tally_storages() avant export."
                 )
 
-        # --- build selector map (ids -> columns)
+        # La selection accepte a la fois les IDs metier historiques et les noms
+        # de colonnes prefixes, afin de garder la compatibilite des notebooks.
         selector_map: dict[str, list[str]] = {}
 
         def _add_selector(key: str, cols: list[str]) -> None:
@@ -1557,12 +1570,6 @@ converters:
     
     
     
-
-
-
-
-
-
 
 
 
