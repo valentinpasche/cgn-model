@@ -39,7 +39,7 @@ import networkx as nx
 
 from cgn_model.energy_solver.types import FArray, Mode, Plan, Pos
 from cgn_model.energy_solver.config import Cfg
-from cgn_model.energy_solver.components import ConverterABC
+from .converters import ConverterABC
 
 __all__ = ["SolverDAG"]
 
@@ -340,7 +340,7 @@ class SolverDAG:
         Les bus utilisent l'unite canonique W pour le bilan instantane. Les
         convertisseurs ne contiennent pas encore de profils `p_in_w`/`p_out_w`.
         """
-        from .components import build_converter_from_cfg  # un seul import stable
+        from .converters import build_converter_from_cfg  # registre local des convertisseurs
         
         # 1) Buses
         buses: dict[str, Bus] = {
@@ -518,7 +518,6 @@ class SolverDAG:
         )
         
         return None    
-
 
 
 

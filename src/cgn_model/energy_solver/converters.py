@@ -1,4 +1,4 @@
-# cgn_model/energy_solver/components/converters.py
+# cgn_model/energy_solver/converters.py
 
 """
 Convertisseurs energetiques du `SolverDAG` et registre de construction.
@@ -327,7 +327,6 @@ def build_variable_eta(id: str, from_bus: str, to_bus: str, params: VariableEtaP
         eta=params.eta_default,
         eta_source=params.eta_source
     )
-
 
 
 
