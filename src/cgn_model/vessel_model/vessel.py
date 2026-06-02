@@ -2,6 +2,16 @@
 
 """
 Orchestrateur vessel : chargement des profils, adapters et integration solver.
+
+Ce module fait la transition entre la configuration metier du bateau et le
+solveur energetique generique. Le pipeline principal est :
+
+    YAML -> Vessel -> profiles -> adapters -> inputs signes
+         -> SolverDAG.prepare_state/run_vector -> storages/results
+
+Le `Vessel` ne resout pas directement les flux d'energie. Il prepare les signaux,
+applique les conventions metier (unites, signes, sources) et transmet au
+`SolverDAG` uniquement des profils de puissance signes en W.
 """
 
 from __future__ import annotations
@@ -301,6 +311,15 @@ def _apply_sign_policy(arr: FArray, policy: str, scale: float | int | None) -> F
     -----
     La convention numerique du solver est : puissance positive = injection sur
     un bus, puissance negative = demande ou retrait sur ce bus.
+
+    La convention YAML est donc traduite ainsi :
+    - `consume` : le signal est converti en demande, donc force en negatif ;
+    - `inject` : le signal est converti en apport, donc force en positif ;
+    - `as_is`  : le signe du signal source est conserve.
+
+    Le facteur `scale`, s'il est fourni, est applique avant cette politique de
+    signe. Un `scale` negatif peut donc inverser le sens physique attendu et
+    declencher un warning plus loin dans le pipeline.
     """
     arr = np.asarray(arr, dtype=np.float64)
     if scale is not None:
@@ -425,6 +444,25 @@ class Vessel:
     """
     Orchestrateur metier pour preparer le solver et les signaux.
 
+    `Vessel` est la couche de traduction entre le YAML complet et le `SolverDAG`.
+    Il garde les notions metier (profils, navigation, adapters, bindings
+    d'inputs, stockages) et prepare pour le solver une interface plus simple :
+    des bus, des convertisseurs et des profils de puissance signes.
+
+    Pipeline principal
+    ------------------
+    1. lire/valider les metadonnees du bateau ;
+    2. construire le `SolverDAG` depuis les sections solver du YAML ;
+    3. construire les profils bruts (`profiles`) ;
+    4. construire les transformations (`adapters`) ;
+    5. materialiser tous les signaux disponibles ;
+    6. appliquer les bindings d'inputs et les conventions de signe ;
+    7. preparer le solver avec `prepare_state` ;
+    8. post-traiter les stockages et exporter les resultats si besoin.
+
+    Cette classe est volontairement un orchestrateur : elle coordonne plusieurs
+    objets, mais laisse le calcul de propagation energetique au `SolverDAG`.
+
     Attributes
     ----------
     name : str
@@ -478,19 +516,33 @@ class Vessel:
         -------
         Vessel
             Instance prete a construire les inputs.
+
+        Notes
+        -----
+        Le YAML contient deux niveaux de responsabilite :
+        - les sections metier (`profiles`, `adapters`, `storages`, etc.) sont
+          conservees et interpretees par `Vessel` ;
+        - les sections energetiques (`solver`, `buses`, `converters`, `inputs`)
+          sont filtrees et preparees par `SolverDAG`.
+
+        Cette separation permet de garder un solveur generique, tout en laissant
+        au `Vessel` la responsabilite de traduire le scenario metier en signaux.
         """
-        # 1) Métadonnées (name, vessel_type)
+        # 1) Metadonnees vessel (name, vessel_type).
         meta = cls._parse_cfg(cfg)
         meta_model = cls._validate_cfg(meta)
 
-        # 2) Solver (utilise le YAML complet ; son _parse_cfg interne filtrera)
+        # 2) Structure solver: bus, convertisseurs, inputs et plan DAG.
+        #    Le SolverDAG filtre lui-meme les sections qui le concernent.
         solver = SolverDAG.from_yaml(cfg)
 
-        # 3) Sections 'métier' (profiles/adapters/inputs) → runtime objects
+        # 3) Sections metier: profils, adapters, bindings d'inputs et stockages.
         raw = cls._extract_sections(cfg)
         sections = VesselSectionsCfg.model_validate(raw)   # declenche cross_checks()
         if check_ids:
             cls._check_id_collisions(sections=sections, solver=solver)
+
+        # 4) Objets runtime cote Vessel.
         dt = float(sections.simulation.dt)
         profiles    = cls._build_profiles(sections.profiles, dt)
         adapters    = cls._build_adapters(sections.adapters)
@@ -500,7 +552,7 @@ class Vessel:
         storages_cfg = list(storages_raw) if storages_raw is not None else []
         storages=None
 
-        # 4) Matérialiser tous les signaux (profiles bruts + adapters)
+        # 5) Materialisation des signaux: profiles bruts + sorties d'adapters.
         signals = cls._materialize_signals(profiles, adapters)
 
         return cls(
@@ -840,7 +892,7 @@ class Vessel:
                 raise RuntimeError(f"Cycle ou sources manquantes dans les adapters: {missing}")
         return signals
 
-    # -------- Préparation des inputs pour le solver --------
+    # -------- Pipeline: signaux Vessel -> profils signes du SolverDAG --------
     def build_solver_inputs(
         self,
         *,
@@ -850,6 +902,11 @@ class Vessel:
     ) -> dict[str, FArray] | dict[str, tuple[str, FArray]]:
         """
         Prepare les profils d'inputs attendus par `prepare_state`.
+
+        Cette methode est le point de passage entre les signaux metier du
+        `Vessel` et les inputs numeriques du `SolverDAG`. Elle recupere la
+        source declaree par chaque `InputBind`, convertit eventuellement le
+        signal en W, applique `scale`, puis applique la convention de signe.
 
         Parameters
         ----------
@@ -869,9 +926,14 @@ class Vessel:
 
         Notes
         -----
-        Les signes sont appliques ici : ``consume`` produit une puissance
-        negative, ``inject`` une puissance positive et ``as_is`` conserve le
-        signal source.
+        Convention solver :
+        - valeur positive : injection sur le bus ;
+        - valeur negative : demande/retrait sur le bus.
+
+        Convention YAML :
+        - ``sign: consume`` force le profil en negatif ;
+        - ``sign: inject`` force le profil en positif ;
+        - ``sign: as_is`` conserve le signe de la source.
         """
         if self.signals is None or self.input_binds is None:
             raise RuntimeError("Vessel non initialisé (signals/input_binds manquants).")
@@ -944,7 +1006,7 @@ class Vessel:
     
         return {k: v[1] for k, v in full.items()} if profiles_only else full
     
-    # -------- Connexion des inputs avec le solver, via `prepare_state` --------
+    # -------- Pipeline: application effective des inputs au SolverDAG --------
     def apply_inputs_to_solver(
         self,
         *,
@@ -956,6 +1018,11 @@ class Vessel:
     ) -> int:
         """
         Applique les inputs au solver via prepare_state.
+
+        Cette methode initialise l'etat numerique du `SolverDAG` a partir des
+        profils signes construits par `build_solver_inputs()`. Apres cet appel,
+        les bus possedent un `net_w` initial et les inputs du solver portent
+        leurs profils.
 
         Parameters
         ----------
@@ -974,6 +1041,12 @@ class Vessel:
         -------
         int
             Longueur N des profils.
+
+        Notes
+        -----
+        Cette methode prepare le solver mais ne lance pas la propagation DAG.
+        L'appel a `run_vector(self.solver)` reste separe pour rendre visible la
+        difference entre preparation des inputs et resolution energetique.
         """
         profiles = self.build_solver_inputs(
             profiles_only=True, verbose=verbose, auto_convert=auto_convert,
@@ -992,7 +1065,7 @@ class Vessel:
 
         return N
     
-    # -------- Connexion des signaux avec le solver, signaux adimensionnels --------
+    # -------- Pipeline: signaux adimensionnels -> convertisseurs variables --------
     def attach_converter_eta_profiles(
         self,
         *,
@@ -1068,7 +1141,7 @@ class Vessel:
 
         return attached
 
-    # --- Orchestrateur global pour la construction du SolverDAG ---
+    # --- Pipeline court: inputs + rendements variables, sans run_vector ---
     def build_solver(
         self,
         *,
@@ -1570,10 +1643,3 @@ converters:
     
     
     
-
-
-
-
-
-
-
