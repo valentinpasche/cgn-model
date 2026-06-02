@@ -9,9 +9,11 @@ solveur energetique generique. Le pipeline principal est :
     YAML -> Vessel -> profiles -> adapters -> inputs signes
          -> SolverDAG.prepare_state/run_vector -> storages/results
 
-Le `Vessel` ne resout pas directement les flux d'energie. Il prepare les signaux,
-applique les conventions metier (unites, signes, sources) et transmet au
-`SolverDAG` uniquement des profils de puissance signes en W.
+Le `Vessel` prepare les signaux, applique les conventions metier (unites,
+signes, sources) et transmet au `SolverDAG` uniquement des profils de puissance
+signes en W. La methode `run()` fournit le workflow utilisateur principal en
+chainant preparation du solver, resolution vectorielle et post-traitement des
+stockages.
 """
 
 from __future__ import annotations
@@ -85,7 +87,7 @@ class Vessel:
     8. post-traiter les stockages et exporter les resultats si besoin.
 
     Cette classe est volontairement un orchestrateur : elle coordonne plusieurs
-    objets, mais laisse le calcul de propagation energetique au `SolverDAG`.
+    objets et delegue le calcul de propagation energetique au `SolverDAG`.
 
     Attributes
     ----------
@@ -797,6 +799,59 @@ class Vessel:
             clip_eta_profile=clip_eta_profile,
         )
 
+    def run(
+        self,
+        *,
+        verbose: bool = False,
+        auto_convert_w_profile: bool = False,
+        clip_eta_profile: bool = True,
+        tally_storages: bool = True,
+    ) -> "Vessel":
+        """
+        Execute le workflow principal du vessel.
+
+        Cette methode est l'API de haut niveau recommandee pour un utilisateur
+        metier. Elle enchaine :
+
+        1. preparation des inputs du solver avec `build_solver()` ;
+        2. resolution du DAG avec `run_vector()` ;
+        3. post-traitement des stockages avec `tally_storages()`.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Affiche les informations de cablage.
+        auto_convert_w_profile : bool, optional
+            Active la conversion automatique des profils vers W lors de la
+            preparation des inputs.
+        clip_eta_profile : bool, optional
+            Borne les profils de rendement eta(t) dans l'intervalle admissible.
+        tally_storages : bool, optional
+            Si True, calcule les resultats de stockage apres resolution.
+
+        Returns
+        -------
+        Vessel
+            L'instance courante, afin de permettre un usage chaine.
+
+        Examples
+        --------
+        >>> vessel = Vessel.from_yaml(yaml_text)
+        >>> vessel.run()
+        >>> df = vessel.results_dataframe()
+        """
+        from cgn_model.energy_solver import run_vector
+
+        self.build_solver(
+            verbose=verbose,
+            auto_convert_w_profile=auto_convert_w_profile,
+            clip_eta_profile=clip_eta_profile,
+        )
+        run_vector(self.solver)
+        if tally_storages:
+            self.tally_storages(require_solver_run=True)
+        return self
+
     # --- Gestion des stockages en sortie du SolverDAG ---
     def tally_storages(
         self,
@@ -822,6 +877,18 @@ class Vessel:
                 raise RuntimeError(
                     "tally_storages() : le solver ne semble pas initialisé. "
                     "Appelle d'abord Vessel.apply_inputs_to_solver()."
+                )
+
+        if require_solver_run:
+            missing_convs = [
+                conv_id for conv_id, conv in self.solver.converters.items()
+                if getattr(conv, "p_in_w", None) is None or getattr(conv, "p_out_w", None) is None
+            ]
+            if missing_convs:
+                raise RuntimeError(
+                    "tally_storages() : le solver ne semble pas resolu. "
+                    f"Convertisseurs sans resultats: {missing_convs}. "
+                    "Appelle d'abord Vessel.run() ou run_vector(vessel.solver)."
                 )
 
         for scfg in self.storages_cfg:
@@ -1001,11 +1068,13 @@ class Vessel:
                 )
             if missing_convs:
                 raise RuntimeError(
-                    "Resultats des convertisseurs manquants. Lancez run_vector() avant export."
+                    "Resultats des convertisseurs manquants. Appelez Vessel.run() avant export "
+                    "ou lancez run_vector() manuellement pour un usage avance."
                 )
             if (self.storages_cfg and (self.storages is None or len(self.storages) == 0)):
                 raise RuntimeError(
-                    "Stockages configures mais non calcules. Appelez tally_storages() avant export."
+                    "Stockages configures mais non calcules. Appelez Vessel.run() avant export "
+                    "ou tally_storages() manuellement pour un usage avance."
                 )
 
         # La selection accepte a la fois les IDs metier historiques et les noms
