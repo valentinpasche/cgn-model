@@ -128,26 +128,26 @@ color1 = 'blue'
 ax1.set_xlabel('time (s)')
 ax1.set_ylabel('Speed (m/s)', color=color1)
 ax1.tick_params(axis='y', labelcolor=color1)
-ax1.plot(df["time_s"], df["speed_m_per_s"], color=color1)
+ax1.plot(df["time_s"], df["profile_speed_m_per_s"], color=color1)
 
 color2 = 'green'
 ax2 = ax1.twinx()
 ax2.set_ylabel('Shaft power (W)', color=color2)
 ax2.tick_params(axis='y', labelcolor=color2)
-ax2.plot(df["time_s"], df["shaft_demand_W"], color=color2)
+ax2.plot(df["time_s"], df["input_shaft_demand_W"], color=color2)
 
 color3 = 'orange'
 ax3 = ax1.twinx()
 ax3.set_ylabel('Power net (W)', color=color3)
 ax3.tick_params(axis='y', labelcolor=color3)
-ax3.plot(df["time_s"], df["fuel_tank_p_W"], color=color3)
+ax3.plot(df["time_s"], df["storage_fuel_tank_p_W"], color=color3)
 ax3.spines.right.set_position(("axes", 1.1))
 
 color4 = 'red'
 ax4 = ax1.twinx()
 ax4.set_ylabel('Power cumul (J)', color=color4)
 ax4.tick_params(axis='y', labelcolor=color4)
-ax4.plot(df["time_s"], df["fuel_tank_e_cum_J"], color=color4)
+ax4.plot(df["time_s"], df["storage_fuel_tank_e_cum_J"], color=color4)
 ax4.spines.right.set_position(("axes", 1.2))
 
 fig.tight_layout()

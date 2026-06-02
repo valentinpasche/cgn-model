@@ -74,7 +74,6 @@ adapters:
       speed_source: "speed"
       force_unit_in: "N"
       speed_unit_in: "m/s"
-      unit_out: "W"
     
   #   # 3) vitesse -> puissance (polynôme)
   # - id: "shaft_power_from_speed"
@@ -90,10 +89,12 @@ inputs:
   - id: "shaft_demand"
     bus: "shaft"
     source: "shaft_power_from_Fv"  # via l’adapter (clé ignorée par le solver, utilisé par Vessel)
+    sign: "consume"
 
   - id: "navops"
     bus: "elec_power"
     source: "hotel_load"              # direct: déjà en W
+    sign: "consume"
 
 solver:
   mode: "inverse"
