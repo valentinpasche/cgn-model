@@ -8,7 +8,7 @@ build/
 dist/
 .pytest_cache/
 
-/temp_doc
+docs/temp_doc/dev_chats
 
 /.vscode/
 /AGENTS.md
