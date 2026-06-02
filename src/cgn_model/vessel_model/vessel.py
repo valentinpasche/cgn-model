@@ -17,7 +17,7 @@ applique les conventions metier (unites, signes, sources) et transmet au
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 import copy
 import yaml
 import numpy as np
@@ -32,410 +32,34 @@ from cgn_model.vessel_model.config import (
     VesselCfg,
     AdapterCfg,
     InputBindCfg,
+    ProfileCfg,
     VesselSectionsCfg,
-    ProfileCfg,            # Union discriminée: constant/series/file/nav_speed
-    NavSelect,
-    NavParams,
     StorageCfg,
 )
+from cgn_model.vessel_model.profiles import (
+    _load_csv_column,
+    _build_nav_speed,
+    _pick_master_id,
+    Profile,
+)
+from cgn_model.vessel_model.signals import (
+    _apply_sign_policy,
+    _warn_inconsistent_sign,
+    InputBind,
+    Signals,
+)
 from cgn_model.vessel_model.adapters import AdapterABC, build_adapter_from_cfg
-from cgn_model.navigation import Croisiere, SpeedProfileParams
+from cgn_model.vessel_model.results_utils import (
+    results_col_name,
+    unit_from_storage_col,
+    strip_storage_unit_suffix,
+)
 from cgn_model.vessel_model.storage import StorageResult
 
 type FArray = NDArray[np.floating]
 type SolverMode = Mode
 
-
 __all__ = ["Vessel"]
-
-
-# ---------- Helpers I/O & navigation ----------
-def _load_csv_column(
-    file: str,
-    column: str | None,
-    sep: str | None = None,           # <- override possible
-    decimal: str = ".",               # <- "." ou ","
-    encoding: str = "utf-8-sig",      # gère le BOM Excel
-) -> FArray:
-    """
-    Charge une colonne numerique d'un CSV en float64.
-
-    Parameters
-    ----------
-    file : str
-        Chemin du fichier CSV.
-    column : str | None
-        Nom de colonne; si None, utilise la premiere colonne.
-    sep : str | None, optional
-        Separateur CSV. None = auto-detection.
-    decimal : str, optional
-        Separateur decimal ("." ou ",").
-    encoding : str, optional
-        Encodage (ex. "utf-8-sig" pour BOM Excel).
-
-    Returns
-    -------
-    numpy.ndarray
-        Serie 1D en float64.
-    """
-    try:
-        import pandas as pd  # type: ignore
-
-        # Auto-détection via l’engine Python si sep=None
-        if sep is None:
-            df = pd.read_csv(file, sep=None, engine="python", decimal=decimal, encoding=encoding)
-        else:
-            df = pd.read_csv(file, sep=sep, decimal=decimal, encoding=encoding)
-
-        col = column or (df.columns[0] if len(df.columns) else None)
-        if not col or col not in df.columns:
-            raise ValueError(
-                f"Colonne {column!r} introuvable dans {file!r}. "
-                f"Colonnes: {list(df.columns)!r}"
-            )
-
-        arr = df[col].to_numpy(dtype="float64", na_value=np.nan)
-        if np.isnan(arr).any():
-            raise ValueError(f"Valeurs non numériques/NA dans {file!r} colonne {col!r}.")
-        return arr  # type: ignore[return-value]
-
-    except ModuleNotFoundError:
-        import csv
-        # Fallback: tente Sniffer si sep non fourni
-        with open(file, "r", encoding=encoding, newline="") as f:
-            if sep is None:
-                sample = f.read(4096)
-                f.seek(0)
-                try:
-                    dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
-                    sep = dialect.delimiter
-                except csv.Error:
-                    sep = ","  # défaut raisonnable
-            reader = csv.DictReader(f, delimiter=sep)
-            if reader.fieldnames is None:
-                raise ValueError(
-                    f"CSV {file!r} sans en-tête; fournis 'column' ou installe pandas."
-                )
-            col = column or reader.fieldnames[0]
-            if col not in reader.fieldnames:
-                raise ValueError(
-                    f"Colonne {column!r} introuvable dans {file!r}. "
-                    f"Colonnes: {reader.fieldnames!r}"
-                )
-
-            vals: list[float] = []
-            for row in reader:
-                s = row[col]
-                # gérer décimale ","
-                if decimal == ",":
-                    s = s.replace(",", ".")
-                try:
-                    vals.append(float(s))
-                except ValueError as e:
-                    raise ValueError(
-                        f"Valeur non numérique dans {file!r} colonne {col!r}: {row[col]!r}"
-                    ) from e
-        return np.asarray(vals, dtype=np.float64)
-
-def _build_nav_speed(
-    *,
-    source: str,                # ex: "cgn_croisieres/all"
-    select: NavSelect,          # by="cruise" | "course" | "leg"
-    params: NavParams,          # acc/dec/v_croisiere/allow_delay
-    dt: float,                  # pas global [s]
-) -> FArray:
-    """
-    Construit un profil de vitesse [m/s] depuis le module navigation.
-
-    Parameters
-    ----------
-    source : str
-        Source des horaires (ex. "cgn_croisieres/all").
-    select : NavSelect
-        Criteres de selection (cruise, course, leg).
-    params : NavParams
-        Parametres MRUA (acc, dec, v_croisiere, allow_delay).
-    dt : float
-        Pas de temps global [s].
-
-    Returns
-    -------
-    numpy.ndarray
-        Profil de vitesse [m/s].
-    """
-    # 1) charger les croisières depuis la "source"
-    #    Pour l’instant on supporte "cgn_croisieres/<which>"
-    if not source.startswith("cgn_croisieres/"):
-        raise ValueError(f"source nav_speed non supportée: {source!r} (attendu 'cgn_croisieres/<which>')")
-    which = source.split("/", 1)[1] or "all"
-    cruises: list[Croisiere] = Croisiere.from_cgn_croisiere_csv(which)
-
-    # 2) sélectionner l’objet navigation cible
-    target = None
-
-    if select.by == "cruise":
-        name = select.cruise_name
-        for cr in cruises:
-            if getattr(cr, "nom", None) == name:
-                target = cr
-                break
-        if target is None:
-            raise ValueError(f"Croisière {name!r} introuvable dans {which!r}.")
-
-    elif select.by == "course":
-        num = select.course_no
-        for cr in cruises:
-            for c in getattr(cr, "courses", []):
-                if getattr(c, "numero", None) == num:
-                    target = c
-                    break
-            if target is not None:
-                break
-        if target is None:
-            raise ValueError(f"Course n°{num} introuvable dans {which!r}.")
-
-    elif select.by == "leg":
-        leg = select.leg or {}
-        fport = leg.get("from_port"); tport = leg.get("to_port")
-        if not fport or not tport:
-            raise ValueError("select.leg doit contenir {from_port, to_port}.")
-        for cr in cruises:
-            # Etapes dans les courses
-            for c in getattr(cr, "courses", []):
-                for e in getattr(c, "etapes", []):
-                    if getattr(e, "from_port", None) == fport and getattr(e, "to_port", None) == tport:
-                        target = e
-                        break
-                if target is not None:
-                    break
-            if target is not None:
-                break
-            # Etapes "pauses" éventuelles (si pertinent)
-            for e in getattr(cr, "pauses", []) or []:
-                if getattr(e, "from_port", None) == fport and getattr(e, "to_port", None) == tport:
-                    target = e
-                    break
-            if target is not None:
-                break
-        if target is None:
-            raise ValueError(f"Étape {fport!r}->{tport!r} introuvable dans {which!r}.")
-
-    else:
-        raise NotImplementedError(f"select.by={select.by!r} non supporté")
-    
-    # 3) Fusion des paramètres : dt = global ; le reste, override si fourni
-    sp = SpeedProfileParams(dt=float(dt)) # << défaut de référence ici pour dt
-    if params.acc is not None:         sp.acc = float(params.acc)
-    if params.dec is not None:         sp.dec = float(params.dec)
-    if params.v_croisiere is not None: sp.v_croisiere = float(params.v_croisiere)
-    if params.allow_delay is not None: sp.allow_delay = bool(params.allow_delay)
-    
-    # propage la méthode .speed_profil(sp) selon le type (Croisiere/Course/Etape)
-    target.speed_profile(sp)
-    arr = getattr(target, "profile", None)
-    if arr is None:
-        raise RuntimeError("Le module navigation n’a pas produit de 'profile'.")
-    return np.asarray(arr, dtype=np.float64)
-
-
-# ---------- Helpers de "preview" et choix du maître ----------
-def _pick_master_id(profiles_cfg: list[ProfileCfg]) -> str:
-    """
-    Choisit l'ID du profil maitre sans le construire.
-
-    Parameters
-    ----------
-    profiles_cfg : list[ProfileCfg]
-        Liste des profils declares.
-
-    Returns
-    -------
-    str
-        ID du profil maitre.
-
-    Notes
-    -----
-    Priorite de selection:
-    - premier p.master == True (mais pas "constant")
-    - premier "nav_speed"
-    - premier "series" ou "file"
-    - sinon -> erreur (tous constants => ambigu sans longueur de reference)
-    """
-    # 1) master explicite
-    for p in profiles_cfg:
-        if getattr(p, "master", False):
-            if p.kind == "constant":
-                raise ValueError(
-                    f"Profil maître {p.id!r} est 'constant' : une longueur de référence est nécessaire "
-                    "(déclare un nav_speed/series/file maître)."
-                )
-            return p.id
-
-    # 2) premier nav_speed
-    for p in profiles_cfg:
-        if p.kind == "nav_speed":
-            return p.id
-
-    # 3) premier series/file
-    for p in profiles_cfg:
-        if p.kind in ("series", "file"):
-            return p.id
-
-    # 4) sinon
-    raise ValueError(
-        "Aucune longueur de référence trouvée (tous les profils sont 'constant'). "
-        "Déclare un 'nav_speed' ou 'series/file'."
-    )
-
-def _apply_sign_policy(arr: FArray, policy: str, scale: float | int | None) -> FArray:
-    """
-    Applique la convention de signe d'un input avant injection dans le solver.
-
-    Parameters
-    ----------
-    arr : FArray
-        Signal 1D source, dans son unite courante apres conversion eventuelle.
-    policy : {"consume", "inject", "as_is"}
-        Convention de signe cote bus solver.
-        ``consume`` rend le profil negatif, ``inject`` le rend positif et
-        ``as_is`` conserve le signe fourni.
-    scale : float | int | None
-        Facteur multiplicatif optionnel applique avant la convention de signe.
-
-    Returns
-    -------
-    FArray
-        Signal signe selon la convention du bilan de bus.
-
-    Notes
-    -----
-    La convention numerique du solver est : puissance positive = injection sur
-    un bus, puissance negative = demande ou retrait sur ce bus.
-
-    La convention YAML est donc traduite ainsi :
-    - `consume` : le signal est converti en demande, donc force en negatif ;
-    - `inject` : le signal est converti en apport, donc force en positif ;
-    - `as_is`  : le signe du signal source est conserve.
-
-    Le facteur `scale`, s'il est fourni, est applique avant cette politique de
-    signe. Un `scale` negatif peut donc inverser le sens physique attendu et
-    declencher un warning plus loin dans le pipeline.
-    """
-    arr = np.asarray(arr, dtype=np.float64)
-    if scale is not None:
-        arr = arr * float(scale)
-    
-    if policy == "consume":  # négatif
-        return -arr
-    if policy == "inject":   # positif
-        return +arr
-    if policy == "as_is":
-        return arr
-    raise ValueError(f"sign policy inconnue: {policy!r}")
-
-def _warn_inconsistent_sign(
-    arr: np.ndarray,
-    expected: Literal["consume", "inject"],
-    *,
-    eps: float = 1e-9,      # tolerance pour "quasi zero"
-    min_count_warn: int = 1, # a partir de combien de points "mauvais signe" on previent
-) -> tuple[int, int, float]:
-    """
-    Detecte les incoherences de signe sur un profil.
-
-    Parameters
-    ----------
-    arr : numpy.ndarray
-        Profil 1D.
-    expected : {"consume", "inject"}
-        Signe attendu.
-    eps : float, optional
-        Tolerance pour quasi-zero.
-    min_count_warn : int, optional
-        Seuil minimal pour emettre un warning.
-
-    Returns
-    -------
-    tuple[int, int, float]
-        (total_utiles, nb_mauvais, frac_mauvais).
-
-    Notes
-    -----
-    - expected = "consume" -> on attend des valeurs <= 0
-    - expected = "inject"  -> on attend des valeurs >= 0
-    """
-    nz = np.abs(arr) > eps            # on ignore ~0
-    total = int(nz.sum())
-    if total == 0:
-        return 0, 0, 0.0
-
-    if expected == "consume":
-        wrong_mask = arr[nz] > 0
-    else:  # 'inject'
-        wrong_mask = arr[nz] < 0
-
-    wrong = int(wrong_mask.sum())
-    frac = wrong / total if total else 0.0
-
-    if wrong >= min_count_warn:
-        warnings.warn(
-            f"Signe inattendu pour sign={expected}: {wrong}/{total} "
-            f"échantillons (~{frac*100:.3f}%). "
-            f"min={arr.min():.3g}, max={arr.max():.3g}",
-            stacklevel=2,
-        )
-
-    return total, wrong, frac
-
-# ---------------- Types & runtime entities ----------------
-
-@dataclass
-class Profile:
-    """
-    Profil brut tel que declare cote YAML.
-
-    Attributes
-    ----------
-    id : str
-        Identifiant du profil.
-    unit : str
-        Unite declaree (ex. "kn", "W", "m/s").
-    data : numpy.ndarray
-        Profil 1D en float64.
-    """
-    id: str
-    unit: str
-    data: FArray
-
-@dataclass
-class InputBind:
-    """
-    Liaison input solver -> source (profil ou adapter).
-
-    Attributes
-    ----------
-    id : str
-        Identifiant de l'input (cote solver).
-    bus : str
-        Bus cible (cote solver).
-    source : str
-        ID d'un Profile ou d'un Adapter.
-    sign : str
-        Convention de signe (consume/inject/as_is).
-    scale : float
-        Facteur d'echelle applique au profil.
-    """
-    id: str
-    bus: str
-    source: str
-    sign: str
-    scale: float = 1.0
-
-
-type Signals = dict[str, tuple[FArray, str]]  # id -> (array, unit)
-
-__all__ = ["Vessel"]
-
 
 # ========================== Vessel ==========================
 
@@ -1284,25 +908,6 @@ class Vessel:
         order: list[str] = []
         N: int | None = None
 
-        def _clean_unit(unit: str | None) -> str | None:
-            if unit is None:
-                return None
-            u = unit.strip()
-            if u == "" or u == "-":
-                return "unitless"
-            u = u.replace("/", "_per_")
-            u = u.replace(" ", "")
-            u = u.replace("*", "_")
-            u = u.replace("^", "")
-            u = u.replace("(", "").replace(")", "")
-            return u
-
-        def _col_name(base: str, unit: str | None) -> str:
-            u = _clean_unit(unit)
-            if u is None:
-                return base
-            return f"{base}_{u}"
-
         def _add_col(base: str, arr: FArray, unit: str | None = None) -> str:
             nonlocal N
             a = np.asarray(arr)
@@ -1312,59 +917,13 @@ class Vessel:
                 N = int(a.shape[0])
             elif int(a.shape[0]) != N:
                 raise ValueError(f"Longueurs incoherentes pour '{base}' ({a.shape[0]} vs {N}).")
-            name = _col_name(base, unit)
+            name = results_col_name(base, unit)
             if name not in columns:
                 columns[name] = a  # type: ignore[assignment]
                 order.append(name)
                 if unit is not None:
                     units[name] = unit
             return name
-
-        def _unit_from_storage_col(col: str) -> str | None:
-            if col == "t_s":
-                return "s"
-            if col.endswith("_W"):
-                return "W"
-            if col.endswith("_kWh"):
-                return "kWh"
-            if col.endswith("_J"):
-                return "J"
-            if col.endswith("_kg"):
-                return "kg"
-            if col.endswith("_kg_per_s"):
-                return "kg/s"
-            if col.endswith("_m3"):
-                return "m3"
-            if col.endswith("_m3_per_s"):
-                return "m3/s"
-            if col.endswith("_l"):
-                return "l"
-            if col.endswith("_l_per_s"):
-                return "l/s"
-            return None
-
-        def _strip_storage_suffix(col: str, unit: str | None) -> str:
-            if unit == "s" and col.endswith("_s"):
-                return col[:-2]
-            if unit == "W" and col.endswith("_W"):
-                return col[:-2]
-            if unit == "kWh" and col.endswith("_kWh"):
-                return col[:-4]
-            if unit == "J" and col.endswith("_J"):
-                return col[:-2]
-            if unit == "kg" and col.endswith("_kg"):
-                return col[:-3]
-            if unit == "kg/s" and col.endswith("_kg_per_s"):
-                return col[:-9]
-            if unit == "m3" and col.endswith("_m3"):
-                return col[:-3]
-            if unit == "m3/s" and col.endswith("_m3_per_s"):
-                return col[:-9]
-            if unit == "l" and col.endswith("_l"):
-                return col[:-2]
-            if unit == "l/s" and col.endswith("_l_per_s"):
-                return col[:-8]
-            return col
 
         # --- time
         t = self.t
@@ -1424,8 +983,8 @@ class Vessel:
                 for col in df.columns:
                     if col == "t_s":
                         continue
-                    unit = _unit_from_storage_col(col)
-                    base = _strip_storage_suffix(col, unit)
+                    unit = unit_from_storage_col(col)
+                    base = strip_storage_unit_suffix(col, unit)
                     c = _add_col(f"storage_{stor_id}_{base}", df[col].to_numpy(), unit)
                     s_cols.append(c)
                 storage_cols_by_id[stor_id] = s_cols
@@ -1597,47 +1156,47 @@ converters:
     params: { eta: 0.9 }
 """
     
-    # # === Test de base de la création de la classe Vessel ===
+    # === Test de base de la création de la classe Vessel ===
 
     cfg = yaml.safe_load(cfg_txt)
     vessel = Vessel.from_yaml(cfg)
     mapping = vessel.build_solver_inputs(verbose=True)
-    # for k, (bus, arr) in mapping.items():
-    #     print(k, "->", bus, "| len:", len(arr), "| first:", round(float(arr[0]),2), "| max:", round(max(arr),2))
+    for k, (bus, arr) in mapping.items():
+        print(k, "->", bus, "| len:", len(arr), "| first:", round(float(arr[0]),2), "| max:", round(max(arr),2))
 
     
-    # # === Validation de la config en 2 paties, Vessel -> Solveur ===
+    # === Validation de la config en 2 paties, Vessel -> Solveur ===
     
-    # def validation_init_solver(vessel, solver):
-    #     dct_vessel_solver = vars(vessel.solver)
-    #     dct_solver = vars(solver)
-    #     # Les ID des Graphs ne sont pas identiques
-    #     del dct_vessel_solver["dag"]
-    #     del dct_solver["dag"]
-    #     return dct_vessel_solver == dct_solver
+    def validation_init_solver(vessel, solver):
+        dct_vessel_solver = vars(vessel.solver)
+        dct_solver = vars(solver)
+        # Les ID des Graphs ne sont pas identiques
+        del dct_vessel_solver["dag"]
+        del dct_solver["dag"]
+        return dct_vessel_solver == dct_solver
     
-    # solver = SolverDAG.from_yaml(cfg)
+    solver = SolverDAG.from_yaml(cfg)
     
-    # if validation_init_solver(vessel, solver):
-    #     print("\nOK : Les 2 solveurs sont identiques !\n")
-    # else:
-    #     print("\nATTENTION : Les 2 solveurs sont différents !\n")
+    if validation_init_solver(vessel, solver):
+        print("\nOK : Les 2 solveurs sont identiques !\n")
+    else:
+        print("\nATTENTION : Les 2 solveurs sont différents !\n")
     
     
     # === Test de la création des inputs de Vessel vers le Solveur interne ===
     
-    # cfg = yaml.safe_load(cfg_txt)
-    # vessel_1 = Vessel.from_yaml(cfg)
-    # vessel_2 = Vessel.from_yaml(cfg)
+    cfg = yaml.safe_load(cfg_txt)
+    vessel_1 = Vessel.from_yaml(cfg)
+    vessel_2 = Vessel.from_yaml(cfg)
     
-    # # Option 1: juste récupérer les profils prêts
-    # mapping = vessel_1.build_solver_inputs(profiles_only=True, verbose=True)
-    # # puis ailleurs:
-    # from cgn_model.energy_solver import prepare_state
-    # prepare_state(vessel_1.solver, mapping)
+    # Option 1: juste récupérer les profils prêts
+    mapping = vessel_1.build_solver_inputs(profiles_only=True, verbose=True)
+    # puis ailleurs:
+    from cgn_model.energy_solver import prepare_state
+    prepare_state(vessel_1.solver, mapping)
     
-    # # Option 2: tout faire en une ligne
-    # vessel_2.apply_inputs_to_solver(verbose=True)
+    # Option 2: tout faire en une ligne
+    vessel_2.apply_inputs_to_solver(verbose=True)
     
     
     
