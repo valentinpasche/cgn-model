@@ -16,10 +16,8 @@ Dossier : `examples/cgn_model_v1_251222`
 
 1) Le YAML decrit le vessel (profils, adaptateurs, inputs) et le solver (buses, convertisseurs).
 2) `Vessel.from_yaml(...)` charge tout et prepare les objets.
-3) `build_solver()` attache les profils aux inputs du solver et fixe la taille N.
-4) `run_vector(...)` execute la resolution energetique.
-5) `tally_storages()` calcule les indicateurs des stockages.
-6) `results_dataframe()` rassemble tout dans un DataFrame plat, avec unites dans les noms de colonnes.
+3) `run()` prepare le solver, execute la resolution energetique et calcule les stockages.
+4) `results_dataframe()` rassemble tout dans un DataFrame plat, avec unites dans les noms de colonnes.
 
 ## Configuration (YAML)
 
@@ -39,8 +37,7 @@ Copiez ce script dans un fichier Python place dans le dossier de l'exemple.
 
 ```python
 import yaml
-from cgn_model.vessel_model import Vessel
-from cgn_model.energy_solver import run_vector
+from cgn_model import Vessel
 
 # 1) Charger le YAML
 with open("config_v1.yaml", "r") as f:
@@ -49,16 +46,10 @@ with open("config_v1.yaml", "r") as f:
 # 2) Construire le Vessel
 vessel = Vessel.from_yaml(cfg)
 
-# 3) Cabler les inputs (prepare le solver)
-vessel.build_solver(verbose=True)
+# 3) Lancer le workflow complet
+vessel.run(verbose=True)
 
-# 4) Lancer la resolution
-run_vector(vessel.solver)
-
-# 5) Calculer les stockages
-vessel.tally_storages()
-
-# 6) Recuperer les resultats
+# 4) Recuperer les resultats
 df = vessel.results_dataframe()
 
 # Exemple : calcul simple de volume cumule de carburant
@@ -66,7 +57,7 @@ pci = 35.28e9  # J/m3
 if "fuel_tank_e_cum_J" in df.columns:
     df["fuel_cum_m3"] = df["fuel_tank_e_cum_J"] / pci
 
-# 7) Export CSV
+# 5) Export CSV
 cols = [
     "time_s",
     "speed_m_per_s",
@@ -106,6 +97,21 @@ Exemple d'extrait sous forme de tableau (arrondi pour la lisibilite) :
 
 ## Erreurs frequentes
 
-- Input non cable : appelez `build_solver()` avant `run_vector()`.
-- Vecteurs manquants : appelez `tally_storages()` avant l'export si des storages sont declares.
+- Input ou convertisseur non calcule : appelez `vessel.run()` avant l'export.
+- Vecteurs manquants : verifiez que les storages sont declares et que `vessel.run()` a ete appele.
 - Nom de colonne introuvable : verifiez les IDs dans le YAML.
+
+## Usage avance
+
+Pour inspecter le solver entre les etapes, le workflow peut encore etre detaille :
+
+```python
+from cgn_model.energy_solver import run_vector
+
+vessel.build_solver(verbose=True)
+run_vector(vessel.solver)
+vessel.tally_storages(require_solver_run=True)
+```
+
+Cet usage est utile pour le debogage ou pour modifier manuellement l'etat du
+`SolverDAG`, mais il n'est pas necessaire dans le cas standard.
