@@ -11,6 +11,12 @@ import numpy as np
 from typing import Mapping
 from cgn_model.energy_solver import SolverDAG
 
+__all__ = [
+    "prepare_state",
+    "run_vector",
+    "attach_eta_profile"
+]
+
 
 def _pos(x: np.ndarray) -> np.ndarray:
     """
@@ -260,7 +266,6 @@ def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
         eta = np.clip(eta, 0.0, 1.0)
     
     conv.eta_profile = eta
-
 
 
 

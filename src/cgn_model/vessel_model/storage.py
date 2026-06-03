@@ -14,6 +14,9 @@ from cgn_model.vessel_model.energy_units import level_to_j, pci_to_j_per_kg, pci
 
 type FArray = NDArray[np.floating]
 
+__all__ = ["StorageResult"]
+
+
 @dataclass
 class StorageResult:
     """

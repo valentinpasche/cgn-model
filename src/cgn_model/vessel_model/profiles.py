@@ -30,6 +30,8 @@ from cgn_model.vessel_model.config import (
 
 type FArray = NDArray[np.floating]
 
+__all__ = ["Profile"]
+
 
 # ---------------- Types & runtime entities ----------------
 @dataclass

@@ -10,7 +10,20 @@ from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, f
 
 type VesselType = Literal["DE", "steam", "undefined"]
 
-__all__ = ["VesselType", "VesselCfg", "ProfileCfg", "AdapterCfg", "InputBindCfg"]
+__all__ = [
+    "VesselType",
+    "VesselCfg",
+    "SimulationCfg",
+    "NavParams",
+    "NavSelect",
+    "ProfileCfg",
+    "AdapterCfg",
+    "InputBindCfg",
+    "EnergyVectorParams",
+    "InitialStorageLevel",
+    "StorageCfg",
+    "VesselSectionsCfg",
+]
 
 
 # ---- Adaptateurs multi-sources
@@ -522,8 +535,6 @@ class VesselSectionsCfg(BaseModel):
             raise ValueError("Vessel sections invalides:\n- " + "\n- ".join(errs))
 
         return self
-
-
 
 
 

@@ -15,6 +15,14 @@ Convention :
   par l'identifiant du stockage sans dupliquer deux fois le suffixe d'unité.
 """
 
+__all__ = [
+    "clean_unit_syntax",
+    "results_col_name",
+    "unit_from_storage_col",
+    "strip_storage_unit_suffix",
+]
+
+
 def clean_unit_syntax(unit: str | None) -> str | None:
     """
     Normalise une unité pour l'utiliser dans un nom de colonne.

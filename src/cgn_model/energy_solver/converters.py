@@ -81,7 +81,10 @@ from numpy.typing import NDArray
 
 type FArray = NDArray[np.floating]
 
-__all__ = ["ConverterABC", "build_converter_from_cfg"]
+__all__ = [
+    "ConverterABC",
+    "build_converter_from_cfg",
+]
 
 # ============================================================
 # ----            Base + Registre d’adapters
@@ -327,8 +330,6 @@ def build_variable_eta(id: str, from_bus: str, to_bus: str, params: VariableEtaP
         eta=params.eta_default,
         eta_source=params.eta_source
     )
-
-
 
 
 

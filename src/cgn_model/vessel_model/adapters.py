@@ -75,7 +75,11 @@ from .config import AdapterCfg  # AdapterCfg générique: id, kind, source, unit
 
 type FArray = NDArray[np.floating]
 
-__all__ = ["AdapterABC", "build_adapter_from_cfg"]
+__all__ = [
+    "convert_unit",
+    "AdapterABC",
+    "build_adapter_from_cfg",
+]
 
 # ============================================================
 # ----            Conversion d’unités (stricte)
