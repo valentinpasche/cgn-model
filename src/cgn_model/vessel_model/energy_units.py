@@ -1,4 +1,4 @@
-# cgn_model/vessel_model/utils.py
+# cgn_model/vessel_model/energy_units.py
 
 from __future__ import annotations
 

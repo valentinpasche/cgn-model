@@ -740,10 +740,10 @@ Adapter puissance vers puissance. Il applique un polynome sur une puissance
 d'entree, utile pour representer une relation empirique entre deux niveaux de
 puissance.
 
-### Module `vessel_model.utils`
+### Module `vessel_model.energy_units`
 
-Fonctions utilitaires pour convertir PCI, energie, masse et volume dans le
-post-traitement des stockages.
+Utilitaires de conversion d’unités énergétiques, principalement utilisés pour
+les niveaux et vecteurs de stockage.
 
 ### `PCI_Massic_Unit`
 

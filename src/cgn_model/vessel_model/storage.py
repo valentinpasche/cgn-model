@@ -10,7 +10,7 @@ from typing import Any
 from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
-from cgn_model.vessel_model.utils import level_to_j, pci_to_j_per_kg, pci_to_j_per_m3
+from cgn_model.vessel_model.energy_units import level_to_j, pci_to_j_per_kg, pci_to_j_per_m3
 
 type FArray = NDArray[np.floating]
 

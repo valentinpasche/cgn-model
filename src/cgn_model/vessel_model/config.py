@@ -238,7 +238,7 @@ class InputBindCfg(BaseModel):
 
 # ---- Storage + Vector specs optionnel ---
 
-from cgn_model.vessel_model.utils import PCI_Massic_Unit, PCI_Volumic_Unit, StorageLevelUnit
+from cgn_model.vessel_model.energy_units import PCI_Massic_Unit, PCI_Volumic_Unit, StorageLevelUnit
 
 class EnergyVectorParams(BaseModel):
     """
