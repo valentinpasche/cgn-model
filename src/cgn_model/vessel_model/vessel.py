@@ -671,8 +671,9 @@ class Vessel:
         Notes
         -----
         Cette methode prepare le solver mais ne lance pas la propagation DAG.
-        L'appel a `run_vector(self.solver)` reste separe pour rendre visible la
-        difference entre preparation des inputs et resolution energetique.
+        Elle reste utile pour un controle detaille ou un debogage entre les
+        etapes. Pour l'usage courant, preferer `Vessel.run()`, qui enchaine
+        preparation, resolution et post-traitement des stockages.
         """
         profiles = self.build_solver_inputs(
             profiles_only=True, verbose=verbose, auto_convert=auto_convert,
@@ -1064,7 +1065,8 @@ class Vessel:
                 raise RuntimeError("Vecteur temps indisponible. Lancez le solver ou construisez les signaux.")
             if missing_inputs:
                 raise RuntimeError(
-                    "Profiles des inputs solver manquants. Appelez build_solver()/apply_inputs_to_solver()."
+                    "Profiles des inputs solver manquants. Appelez Vessel.run() avant export "
+                    "ou build_solver()/apply_inputs_to_solver() pour un usage avance."
                 )
             if missing_convs:
                 raise RuntimeError(

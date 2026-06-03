@@ -47,9 +47,7 @@ def run_simulation_from_yaml(yaml_text: str) -> SimulationOutput:
     """
     cfg = yaml.safe_load(yaml_text)
     vessel = Vessel.from_yaml(cfg)
-    vessel.build_solver(verbose=False)
-    run_vector(vessel.solver)
-    vessel.tally_storages(require_inputs_applied=True, require_solver_run=False)
+    vessel.run()
     df = vessel.results_dataframe()
     return SimulationOutput(
         dataframe=df,
