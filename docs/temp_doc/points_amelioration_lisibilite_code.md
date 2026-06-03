@@ -27,6 +27,10 @@ Ces termes devraient être systématiquement définis dans la documentation. Le
 lexique ajouté dans `lexique_modules_classes.md` répond déjà en partie à ce
 besoin.
 
+État actuel : ce point est en grande partie couvert par le lexique. Il reste
+surtout à reprendre ces définitions dans la documentation finale utilisateur,
+si celle-ci doit être autonome sans lecture du lexique complet.
+
 ## 2. Expliquer le pipeline global
 
 Le pipeline général est clair une fois connu, mais il n'est pas évident au
@@ -46,6 +50,10 @@ YAML -> profiles/adapters/signals -> SolverDAG -> run_vector -> storages -> resu
 Un schéma ou une courte page dédiée à ce flux aiderait fortement un utilisateur à
 comprendre où se situe chaque objet et à distinguer l'API principale de la
 mécanique interne.
+
+État actuel : le workflow principal est maintenant clarifié dans l'API et dans
+les documents principaux. Le point restant serait plutôt de produire un petit
+schéma visuel du pipeline interne, si le client a besoin d'une vue rapide.
 
 ## 3. Rendre explicite la séparation `Vessel` / `SolverDAG`
 
@@ -131,10 +139,18 @@ Une première extraction a déjà été faite :
 - `signals.py` porte les bindings d'inputs et les conventions de signe ;
 - `results_utils.py` porte les conventions de nommage des résultats et des
   unités.
+- `vessel_model.utils.py` rennomé en `energy_units.py` car il porte les
+  conversions liées aux unités d'énergie, PCI et niveaux de stockage.
 
 Le point de vigilance restant est de conserver cette direction : `Vessel` doit
 rester le point d'entrée qui orchestre, tandis que les règles techniques
 réutilisables doivent rester dans des modules dédiés.
+
+État actuel : ce point est largement traité. `Vessel.run()` donne maintenant un
+workflow utilisateur court, tandis que les méthodes détaillées restent
+disponibles pour les usages avancés. Le risque restant est surtout d'éviter que
+les futures évolutions ajoutent à nouveau des règles transversales directement
+dans `vessel.py`.
 
 ## 7. Harmoniser le vocabulaire anglais/français
 
@@ -177,6 +193,12 @@ Il reste utile d'indiquer dans la documentation :
 
 Cela permet au lecteur de savoir ce qu'il peut utiliser directement et ce qui
 sert seulement à comprendre le fonctionnement interne.
+
+État actuel : l'API principale est maintenant plus nette, et les `__all__` ont
+été définis pour représenter une surface publique intentionnelle plutôt que la
+la liste de tous les objets importés en interne. Ce point peut donc être
+considéré comme traité côté code. Il reste à l'expliquer brièvement dans la
+documentation finale.
 
 ## 9. Documenter les limites connues
 
@@ -263,11 +285,9 @@ le modèle mental suivant :
 
 Les priorités documentaires les plus utiles sont donc :
 
-1. schéma du pipeline global ;
-2. exemple minimal du mode inverse ;
-3. tableau des conventions de signe ;
-4. distinction entre `Vessel` et `SolverDAG` ;
-5. lexique des objets et modules ;
-6. fiche des coefficients et domaines de validité ;
-7. hypothèses de navigation et politique de retard ;
-8. tests numériques de référence.
+1. exemple minimal du mode inverse ;
+2. tableau des conventions de signe, notamment pour les stockages ;
+3. clarification des coefficients empiriques fournis dans le YAML ;
+4. hypothèses de navigation et politique de retard ;
+5. tests numériques de référence ;
+6. schéma du pipeline interne, si une vue graphique est souhaitée.
