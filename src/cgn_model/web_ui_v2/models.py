@@ -122,7 +122,12 @@ class ConstantEtaConverter(BaseModel):
 
 class PowerToPowerPolyAdapter(BaseModel):
     """
-    Adaptateur puissance -> puissance via polynome
+    Adaptateur puissance -> puissance via polynome.
+
+    Cet adaptateur permet de connecter un profil de puissance au solveur via une
+    transformation explicite. Il peut servir de passage direct, de correction
+    empirique ou de changement d'echelle. Le defaut `coeffs = [0.0, 1.0]` garde
+    la puissance inchangee lorsque `unit_in` et `unit_out` valent `W`.
 
     Parameters
     ----------
@@ -137,6 +142,8 @@ class PowerToPowerPolyAdapter(BaseModel):
     -----
     - P(p) = a0 + a1*p + a2*p^2 + ...
     - Conversion d'unites automatique vers unit_in.
+    - Le resultat du polynome est interprete comme une puissance en W avant
+      conversion vers unit_out.
     """
     id: str = Field(title="Nom", description="Nom/identifiant de l'adaptateur.")
     source: str = Field(title="Profil source", description="Nom du profil de puissance en entrée.")
@@ -166,7 +173,7 @@ class PowerToPowerPolyAdapter(BaseModel):
         min_length=2,
         default_factory=lambda: [0.0, 1.0],
         validate_default=True,
-        description="P(p) = a0 + a1*p + a2*p^2 + ...",
+        description="P(p) = a0 + a1*p + a2*p^2 + ... ; [0, 1] correspond a un passage direct en W.",
     )
 
 

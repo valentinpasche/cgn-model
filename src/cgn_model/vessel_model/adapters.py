@@ -20,7 +20,8 @@ Adapters fournis
 - `force_and_speed_to_power` : force et vitesse -> puissance, produit `P = F*v`.
 - `speed_to_force_poly` : vitesse -> force, polynome `F(v)`.
 - `speed_to_eta_poly` : vitesse -> rendement adimensionnel `eta(v)`.
-- `power_to_power_poly` : puissance -> puissance, polynome `P(p)`.
+- `power_to_power_poly` : puissance -> puissance, correction empirique ou
+  passage direct d'un profil de puissance vers un signal connectable.
 
 Unites
 ------
@@ -631,6 +632,11 @@ class PowerToPowerPolyAdapter(AdapterABC):
     """
     Adapter puissance -> puissance via polynome.
 
+    Cet adapter sert a transformer un profil de puissance deja disponible en un
+    autre profil de puissance. Il peut etre utilise pour appliquer une correction
+    empirique, changer d'echelle ou fournir un passage explicite entre un profil
+    et le solveur lorsque l'interface impose de passer par un adapter.
+
     Parameters
     ----------
     coeffs : tuple[float, ...]
@@ -646,7 +652,11 @@ class PowerToPowerPolyAdapter(AdapterABC):
     -----
     - P(p) = a0 + a1*p + a2*p^2 + ...
     - Conversion d'unites automatique vers unit_in.
-    - Les coefficients sont interpretes dans l'unite de puissance `unit_in`.
+    - Les coefficients sont appliques a la puissance exprimee dans `unit_in`.
+    - La sortie du polynome est interpretee comme une puissance en W avant
+      conversion vers `unit_out`.
+    - Pour un simple passage direct, utiliser `unit_in="W"`, `unit_out="W"` et
+      `coeffs=(0.0, 1.0)`.
     """
     id: str
     source: str
@@ -658,8 +668,6 @@ class PowerToPowerPolyAdapter(AdapterABC):
     def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
         # 1) puissance -> unit_in
         s, _ = convert_unit(series, unit_in=unit, unit_out=self.unit_in, quantity="power")
-        # TODO: documenter dans les donnees projet l'origine, l'unite d'entree
-        # et le domaine de validite des coefficients polynomiaux.
         # 2) poly
         out = np.zeros_like(s, dtype=np.float64)
         p = np.ones_like(s, dtype=np.float64)
