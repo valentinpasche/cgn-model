@@ -1,21 +1,35 @@
 # Guide YAML (config d'entree)
 
-Ce document explique comment definir un fichier YAML d'entree pour le modele CGN.
-Le YAML relie des profils (inputs), des adapters (transformations), des inputs du solver,
-les bus d'energie et les convertisseurs du DAG.
+Ce document explique comment definir un fichier YAML d'entree pour utiliser le
+modele CGN sans passer par l'interface graphique. Le YAML est le point d'entree
+principal du calcul : il decrit les profils, les transformations, les liaisons
+vers le solveur, les bus d'energie, les convertisseurs et les stockages a
+post-traiter.
+
+Le document sert donc a la fois de reference des champs YAML et de guide
+d'utilisation du modele en mode script.
 
 ## Vue d'ensemble du modele
 > Note: pour un exemple complet (YAML + script), voir [docs/example_v1.md](example_v1.md).
 
 - Le solveur (energy_solver) calcule les bilans d'energie sur un DAG de bus + convertisseurs.
 - Les profils (profiles) sont des signaux bruts (vitesse, charges, etc.).
-- Les adapters transforment ces profils (ex. vitesse -> puissance) et produisent des signaux en W.
+- Les adapters transforment ces profils (ex. vitesse -> puissance) et produisent des signaux utilisables par les inputs ou convertisseurs.
 - Les inputs lient un signal (profile/adapter) a un bus du solver avec une convention de signe.
 - Les convertisseurs (converters) transfèrent l'energie entre bus avec un rendement.
 - Les storages (optionnel) permettent de post-traiter un bus comme un stockage (bilan energie/puissance).
 
-Flux logique :
-profiles -> adapters -> inputs -> solver (buses + converters) -> run_vector -> (optionnel) storages
+Flux d'utilisation principal :
+
+```text
+YAML -> Vessel.from_yaml(...) -> Vessel.run() -> Vessel.results_dataframe()
+```
+
+Flux interne simplifie :
+
+```text
+profiles -> adapters -> inputs -> solver (buses + converters) -> storages/results
+```
 
 Note importante :
 - Le DAG (buses + converters) doit suivre le sens physique du flux d'energie (from_bus -> to_bus).
@@ -51,13 +65,13 @@ simulation:
 ```
 
 ### profiles
-Declaration des profils bruts.
+Declaration des profils bruts. Points d'entree temporels du modele.
 
 Champs communs :
 - id (str) : identifiant unique
 - kind (str) : "constant" | "series" | "file" | "nav_speed"
 - unit (str) : unite declaree
-- master (bool, optionnel) : profil maitre (definit N)
+- master (bool, optionnel) : profil maitre qui fixe `N`, la longueur temporelle commune des profils
 
 Unites autorisees dans l'UI (profiles, usage general) :
 - puissance : "W" | "kW" | "MW" | "GW"
@@ -65,12 +79,16 @@ Unites autorisees dans l'UI (profiles, usage general) :
 - force : "N" | "kN" | "MN" | "GN"
 
 Note :
+- `N` designe le nombre de pas de temps du calcul. Les profils `series` et
+  `file` doivent avoir `N` valeurs. Les constantes scalaires sont diffusees sur
+  `N`; une constante declaree sous forme de liste peut aussi avoir une taille
+  `1` ou `N`.
 - Le code metier peut accepter davantage d'alias/unites selon les composants.
 - Pour l'UI, la liste ci-dessus est volontairement restreinte pour limiter les erreurs utilisateur.
 
 #### kind = constant
 Champs :
-- value (float | list[float]) : valeur constante (len=1) ou serie de taille N
+- value (float | list[float]) : valeur scalaire diffusee sur `N`, ou liste de taille `1` ou `N`
 
 Exemple :
 ```yaml
@@ -82,7 +100,7 @@ Exemple :
 
 #### kind = series
 Champs :
-- data (list[float]) : serie explicite
+- data (list[float]) : serie explicite de taille N
 
 Exemple :
 ```yaml
@@ -96,10 +114,10 @@ Exemple :
 #### kind = file
 Champs :
 - file (str) : chemin vers un CSV
-- column (str | null) : colonne a lire (optionnel)
-- sep (str | null) : separateur CSV (",", ";", "\t", "|")
-- decimal (str) : "." ou ","
-- encoding (str) : encodage (defaut "utf-8-sig")
+- column (str | null, optionnel) : colonne a lire. Si omis ou `null`, la premiere colonne du CSV est utilisee.
+- sep (str | null, optionnel) : separateur CSV (",", ";", "\t", "|"). Defaut `null`, avec auto-detection.
+- decimal (str, optionnel) : "." ou ",". Defaut `"."`.
+- encoding (str, optionnel) : encodage. Defaut `"utf-8-sig"`.
 
 Exemple :
 ```yaml
@@ -112,29 +130,42 @@ Exemple :
 ```
 
 #### kind = nav_speed
-> Note: pour savoir ou trouver les CSV et comment choisir une croisiere/course/etape,
-> voir [docs/navigation_guide.md](navigation_guide.md).
-
-Construit un profil de vitesse a partir des horaires CGN embarques.
+Construit un profil de vitesse a partir des horaires CGN embarques. Ces horaires
+sont des CSV internes au code, lus par le module `navigation`.
 Si allow_delay = false, le profil doit respecter strictement l'horaire (sinon erreur).
 
+Le profil est genere avec une hypothese MRUA (mouvement rectiligne uniformement
+accelere) : acceleration constante au depart, plateau eventuel a la vitesse de
+croisiere, puis deceleration constante a l'arrivee. Cette approximation reste
+pertinente pour une analyse macro comme celle visee ici.
+
 Champs :
-- source (str) : "cgn_croisieres/<name>" (ex. "cgn_croisieres/all")
+- source (str) : "cgn_croisieres/<name>" (ex. "cgn_croisieres/all"). Le prefixe `cgn_croisieres/` est requis.
 - select (dict) : selection par croisiere / course / etape
   - by: "cruise" | "course" | "leg"
   - cruise_name (str) si by="cruise"
   - course_no (int) si by="course"
   - leg: {from_port: str, to_port: str} si by="leg"
 - params (dict, optionnel) : parametres MRUA
-  - acc (float)
-  - dec (float)
-  - v_croisiere (float)
-  - allow_delay (bool)
+  - acc (float, optionnel) : acceleration, defaut `0.04`
+  - dec (float, optionnel) : deceleration, defaut `0.04`
+  - v_croisiere (float, optionnel) : vitesse de croisiere cible, defaut `7.0`
+  - allow_delay (bool, optionnel) : autorise un retard si l'horaire est physiquement impossible, defaut `true`
 
 Contrainte d'unites :
 - `unit` du profil `nav_speed` : "m/s" (SI)
 - `params.acc` et `params.dec` : en `m/s^2` (SI)
 - `params.v_croisiere` : en `m/s` (SI)
+
+Jeux d'horaires disponibles :
+- `cgn_croisieres/translemanique`
+- `cgn_croisieres/petit_lac_grand_lac`
+- `cgn_croisieres/lavaux_haut_lac_grand_lac`
+- `cgn_croisieres/lavaux_haut_lac`
+- `cgn_croisieres/all` : copie concatenee des quatre jeux ci-dessus
+
+Pour plus de detail sur les CSV et la selection croisiere/course/etape, voir
+[navigation_guide.md](navigation_guide.md).
 
 Exemple :
 ```yaml
@@ -158,17 +189,70 @@ Transformations de profils (ex. vitesse -> puissance).
 
 Champs :
 - id (str) : identifiant unique
-- kind (str) : voir liste des kinds plus bas
+- kind (str) : type d'adapter, voir les sous-sections ci-dessous
 - source (str) : id d'un profile ou d'un adapter (ignore pour multi-entrees)
-- unit_in (str) : unite attendue en entree
+- unit_in (str) : unite attendue en entree (ignore pour multi-entrees)
 - unit_out (str) : unite de sortie
 - params (dict) : parametres du kind
 
 Notes :
-- Pour les adapters multi-entrees, source et unit_in sont ignores mais doivent etre renseignes
-  (pour satisfaire le schema Pydantic).
+- Les coefficients empiriques sont fournis par l'utilisateur dans le YAML. Le modele
+  applique les formules et conversions declarees, mais ne valide pas la pertinence
+  physique des coefficients, leur origine ou leur domaine de validite.
+- Les coefficients polynomiaux sont donnes en ordre croissant :
+  `a0 + a1*x + a2*x^2 + ...`.
+- `unit_in` indique l'unite dans laquelle la variable d'entree est convertie avant
+  application des coefficients.
+- `unit_out` indique l'unite de sortie declaree pour le signal produit.
+- Pour les adapters multi-entrees, `source` et `unit_in` sont ignores par le calcul
+  mais doivent etre renseignes pour satisfaire le schema generique.
 
-Exemple (vitesse -> puissance, poly) :
+Ordre des operations dans un adapter mono-entree :
+
+1. lire le signal declare par `source` ;
+2. convertir ce signal depuis son unite de profil vers `unit_in` ;
+3. appliquer la formule de l'adapter avec les valeurs exprimees dans `unit_in` ;
+4. interpreter le resultat dans l'unite native du calcul de l'adapter ;
+5. convertir le resultat vers `unit_out`.
+
+Exemple simple :
+
+```yaml
+profiles:
+  - id: "speed"
+    kind: "series"
+    unit: "kn"
+    data: [10.0]
+    master: true
+
+adapters:
+  - id: "shaft_power_from_speed"
+    kind: "speed_to_power_poly"
+    source: "speed"
+    unit_in: "m/s"
+    unit_out: "kW"
+    params:
+      coeffs: [0.0, 1000.0]
+```
+
+Dans cet exemple, la vitesse `10 kn` est d'abord convertie en `m/s`. Le polynome
+est ensuite applique a cette valeur en `m/s`. Le resultat natif est une puissance
+en `W`, finalement convertie en `kW`.
+
+#### kind = speed_to_power_poly
+
+Transforme un profil de vitesse en profil de puissance avec un polynome.
+
+Parametres :
+- coeffs (list[float]) : coefficients du polynome `P(v)`.
+- clip_min (float | null, optionnel) : valeur minimale appliquee a la sortie avant conversion finale.
+
+Interpretation :
+- la vitesse source est convertie vers `unit_in` ;
+- les coefficients sont appliques a cette vitesse ;
+- le resultat du polynome est interprete comme une puissance en W, puis converti vers `unit_out`.
+
+Exemple :
 ```yaml
 - id: "shaft_power_from_speed"
   kind: "speed_to_power_poly"
@@ -177,6 +261,122 @@ Exemple (vitesse -> puissance, poly) :
   unit_out: "W"
   params:
     coeffs: [0.0, -209.0, 1904.4, 531.36, 93.312]
+```
+
+#### kind = speed_to_force_poly
+
+Transforme un profil de vitesse en profil de force avec un polynome.
+
+Parametres :
+- coeffs (list[float]) : coefficients du polynome `F(v)`.
+- clip_min (float | null, optionnel) : valeur minimale appliquee a la sortie avant conversion finale.
+
+Interpretation :
+- la vitesse source est convertie vers `unit_in` ;
+- les coefficients sont appliques a cette vitesse ;
+- le resultat du polynome est interprete comme une force en N, puis converti vers `unit_out`.
+
+Exemple :
+```yaml
+- id: "resistance_from_speed"
+  kind: "speed_to_force_poly"
+  source: "speed"
+  unit_in: "m/s"
+  unit_out: "N"
+  params:
+    coeffs: [-209.0, 1904.4, 531.36, 93.312]
+```
+
+#### kind = force_and_speed_to_power
+
+Transforme une force et une vitesse en puissance avec `P = F * v`.
+
+Parametres :
+- force_source (str) : id du signal de force.
+- speed_source (str) : id du signal de vitesse.
+- force_unit_in (str, optionnel) : unite de force utilisee avant calcul, defaut `"N"`.
+- speed_unit_in (str, optionnel) : unite de vitesse utilisee avant calcul, defaut `"m/s"`.
+- clip_min (float | null, optionnel) : valeur minimale appliquee a la puissance avant conversion finale.
+
+Notes :
+- `source` et `unit_in` sont ignores par cet adapter, car les deux sources sont
+  declarees dans `params`.
+- Ils doivent tout de meme etre presents dans le YAML pour respecter le schema
+  commun des adapters. Utiliser par convention `source: ""` et `unit_in: ""`.
+
+Exemple :
+```yaml
+- id: "shaft_power_from_force_speed"
+  kind: "force_and_speed_to_power"
+  source: ""
+  unit_in: ""
+  unit_out: "W"
+  params:
+    force_source: "resistance_from_speed"
+    speed_source: "speed"
+    force_unit_in: "N"
+    speed_unit_in: "m/s"
+```
+
+#### kind = speed_to_eta_poly
+
+Transforme un profil de vitesse en profil de rendement adimensionnel.  
+Utilisé pour alimenter un convertisseur à rendement variable.
+
+Parametres :
+- coeffs (list[float]) : coefficients du polynome `eta(v)`.
+
+Interpretation :
+- la vitesse source est convertie vers `unit_in` ;
+- les coefficients sont appliques a cette vitesse ;
+- la sortie est adimensionnelle et doit utiliser `unit_out: "-"`.
+- lors de l'attachement automatique a un convertisseur `variable_eta`, le profil
+  de rendement est borne dans `[1e-6, 1.0]` par defaut afin d'eviter des
+  rendements invalides ou nuls.
+
+Exemple :
+```yaml
+- id: "eta_from_speed"
+  kind: "speed_to_eta_poly"
+  source: "speed"
+  unit_in: "m/s"
+  unit_out: "-"
+  params:
+    coeffs: [0.11138307, 0.03562645, 0.00436722, -0.00056904]
+```
+
+#### kind = power_to_power_poly
+
+Transforme un profil de puissance en un autre profil de puissance.
+
+Cet adapter est utile pour appliquer une correction empirique, un changement
+d'echelle ou une conversion controlee entre un profil de puissance disponible et
+un signal connectable au solveur. Dans l'interface `web_ui_v2`, il sert aussi de
+passage par defaut lorsqu'un profil de puissance doit obligatoirement passer par
+un adapter avant d'etre connecte au solveur.
+
+Parametres :
+- coeffs (list[float]) : coefficients du polynome `P_out(p)`. Dans le YAML, ce
+  champ doit etre renseigne. L'interface web utilise souvent `[0.0, 1.0]` comme
+  valeur de depart pour un passage direct.
+- clip_min (float | null, optionnel) : valeur minimale appliquee a la sortie avant conversion finale.
+
+Interpretation :
+- la puissance source est convertie vers `unit_in` ;
+- les coefficients sont appliques a cette valeur ;
+- le resultat du polynome est interprete comme une puissance en W, puis converti vers `unit_out`.
+- pour un simple passage direct, utiliser `unit_in: "W"`, `unit_out: "W"` et
+  `coeffs: [0.0, 1.0]`.
+
+Exemple :
+```yaml
+- id: "hotel_load_adapter"
+  kind: "power_to_power_poly"
+  source: "hotel_load"
+  unit_in: "W"
+  unit_out: "W"
+  params:
+    coeffs: [0.0, 1.0]
 ```
 
 ### inputs
@@ -189,10 +389,25 @@ Champs :
 - sign (str) : "consume" | "inject" | "as_is"
 - scale (float, optionnel) : facteur multiplicatif
 
+Convention de signe :
+- `consume` : une valeur positive de la source devient une demande sur le bus
+  (profil negatif dans le solver).
+- `inject` : une valeur positive de la source devient une injection sur le bus
+  (profil positif dans le solver).
+- `as_is` : le signe de la source est conserve.
+
+`scale` est applique avant la politique de signe. Il permet d'ajuster une source
+sans creer un nouveau profil : conversion simple de facteur, duplication d'une
+charge, correction empirique, etc.
+
+Important : les bus du solver travaillent actuellement en puissance `W`. La
+source connectee a un input doit donc etre une puissance en `W` apres passage par
+les adapters. Si la source directe est un profil, son unite doit deja etre `W`.
+
 Exemple :
 ```yaml
 - id: "shaft_demand"
-  bus: "Mechanical:shaft"
+  bus: "shaft_bus"
   source: "shaft_power_from_speed"
   sign: "consume"
 ```
@@ -200,6 +415,9 @@ Exemple :
 ### solver
 Champs :
 - mode (str) : "inverse" | "forward" (forward non valide pour l'instant)
+
+Voir aussi [forward vs inverse](forward_vs_inverse.md) pour une explication
+detaillee des deux modes et un exemple numerique.
 
 Exemple :
 ```yaml
@@ -210,77 +428,156 @@ solver:
 ### buses
 Declaration des bus du solver.
 
+Un bus est un noeud de bilan de puissance dans le DAG du solveur. Les inputs y
+ajoutent une demande ou une injection, et les convertisseurs relient plusieurs
+bus entre eux. Un bus n'est donc pas forcement un composant physique detaille :
+c'est surtout un point de raccordement et de conservation de puissance.
+
 Champs :
 - id (str)
-- carrier (str, optionnel) : "Electrical" | "Mechanical" | "Chemical" (ou autre)
-- unit (str, optionnel) : W (par defaut)
+- carrier (str, optionnel) : information descriptive (`Electrical`, `Mechanical`, `Chemical`, etc.)
+- unit (str, optionnel) : actuellement forcee a `W` pour les bilans du solveur
+
+Notes :
+- `id` est l'identifiant utilise par les inputs et convertisseurs. Il peut etre
+  nomme comme un objet metier (`shaft_bus`, `main_electrical_bus`, `fuel_bus`).
+- `carrier` est une metadonnee informative. Il est surtout visible dans
+  l'affichage brut du DAG.
+- Si `carrier` est omis, le solver accepte le bus et utilise quand meme `W`.
+- Aujourd'hui, tous les bus du solveur calculent des puissances instantanees en W,
+  quel que soit le `carrier`.
 
 Exemple :
 ```yaml
 buses:
-  - id: "Mechanical:shaft"
+  - id: "shaft_bus"
     carrier: "Mechanical"
-  - id: "Electrical:main"
+  - id: "main_electrical_bus"
     carrier: "Electrical"
-  - id: "Chemical:fuel"
+  - id: "fuel_bus"
     carrier: "Chemical"
 ```
 
 ### converters
-Convertisseurs du solver (transfert d'energie entre bus).
+Convertisseurs du solver (transfert de puissance entre deux bus).
+
+Un convertisseur represente une transformation entre un bus amont (`from_bus`)
+et un bus aval (`to_bus`) avec un rendement. Le sens `from_bus -> to_bus` doit
+suivre le sens physique du flux d'energie.
 
 Champs :
 - id (str)
 - from_bus (str)
 - to_bus (str)
-- kind (str) : voir liste des kinds plus bas
+- kind (str) : "constant_eta" | "variable_eta"
 - params (dict) : parametres du kind
 
-Exemple (rendement constant) :
+#### kind = constant_eta
+
+Rendement constant sur toute la simulation.
+
+Parametres :
+- eta (float) : rendement constant, obligatoire.
+
+#### kind = variable_eta
+
+Rendement variable fourni par un profil ou un adapter adimensionnel.
+
+Parametres :
+- eta_default (float) : rendement de secours, obligatoire.
+- eta_source (str | null, optionnel) : id du profil ou de l'adapter donnant `eta(t)`.
+
+Notes :
+- `eta_source` doit produire un signal adimensionnel, generalement avec
+  `unit_out: "-"`.
+- `eta_default` reste obligatoire meme si `eta_source` est renseigne, car il sert
+  de valeur de repli.
+
+Exemple avec les deux kinds :
 ```yaml
 converters:
   - id: "genset"
-    from_bus: "Chemical:fuel"
-    to_bus: "Electrical:main"
+    from_bus: "fuel_bus"
+    to_bus: "main_electrical_bus"
     kind: "constant_eta"
     params:
       eta: 0.38
+
+  - id: "motor"
+    from_bus: "main_electrical_bus"
+    to_bus: "shaft_bus"
+    kind: "variable_eta"
+    params:
+      eta_default: 0.90
+      eta_source: "eta_from_speed"
 ```
 
 ### storages (optionnel)
 Declaration de bus a post-traiter en stockage.
 
-Champs :
-- id (str)
-- bus (str)
-- vector_energy (str | null) : identifiant du vecteur (diesel, H2, battery)
-- vector_params (dict | null) : parametres optionnels de conversion energie -> masse/volume
-  - pci_basis (str) : "mass" | "volume"
-  - pci_value (float, > 0) : valeur du PCI
-  - pci_mass_unit (str) : requis si pci_basis="mass"
-    - "kWh/kg" | "MJ/kg" | "kJ/kg" | "J/kg"
-  - pci_volume_unit (str) : requis si pci_basis="volume"
-    - "kWh/l" | "kWh/m3" | "MJ/m3" | "kJ/m3" | "J/m3"
-  - density_kg_m3 (float, optionnel) : densite pour calculer aussi l'autre grandeur
-- initial_level (dict | null) : niveau initial du stockage (optionnel)
-  - value (float, >= 0)
-  - unit (str)
-    - energie : "J" | "kJ" | "MJ" | "Wh" | "kWh" | "MWh"
-    - masse : "kg" | "t"
-    - volume : "m3" | "l"
+Un storage n'ajoute pas de dynamique de stockage dans le solveur. Il indique que
+le bilan de puissance d'un bus doit etre integre apres calcul pour obtenir une
+energie cumulee, puis eventuellement une masse ou un volume selon le vecteur
+energetique declare.
 
-Regles de validation :
-- si pci_basis="mass" :
-  - pci_mass_unit obligatoire
-  - pci_volume_unit interdit
-- si pci_basis="volume" :
-  - pci_volume_unit obligatoire
-  - pci_mass_unit interdit
-- sans pci_basis :
-  - ne pas renseigner pci_value/pci_mass_unit/pci_volume_unit
-- si initial_level est en masse/volume :
-  - vector_params doit permettre la conversion vers energie (PCI requis)
-  - conversion croisee masse<->volume necessite density_kg_m3 > 0
+Cas d'usage typiques :
+- suivre la consommation d'un bus carburant (`fuel_bus`) ;
+- exprimer cette energie en litres, kilogrammes ou kWh ;
+- ajouter un niveau initial de stockage pour obtenir un niveau restant.
+
+Champs :
+- id (str) : identifiant du stockage dans les resultats.
+- bus (str) : bus dont le bilan de puissance est integre.
+- vector_energy (str | null, optionnel) : nom informatif du vecteur energetique
+  (`diesel`, `H2`, `battery`, etc.).
+- vector_params (dict | null, optionnel) : parametres de conversion energie ->
+  masse/volume.
+- initial_level (dict | null, optionnel) : niveau initial du stockage.
+
+#### vector_params
+
+`vector_params` est utile lorsque l'energie integree doit etre convertie en
+masse ou en volume.
+
+Champs :
+- pci_basis (str) : base du PCI, `"mass"` ou `"volume"`.
+- pci_value (float, > 0) : valeur du PCI.
+- pci_mass_unit (str, optionnel) : unite du PCI massique, requise si
+  `pci_basis: "mass"`.
+- pci_volume_unit (str, optionnel) : unite du PCI volumique, requise si
+  `pci_basis: "volume"`.
+- density_kg_m3 (float, optionnel) : densite, utile pour convertir aussi entre
+  masse et volume.
+
+Unites acceptees :
+- PCI massique : `"kWh/kg"`, `"MJ/kg"`, `"kJ/kg"`, `"J/kg"`.
+- PCI volumique : `"kWh/l"`, `"kWh/m3"`, `"MJ/m3"`, `"kJ/m3"`, `"J/m3"`.
+
+Regles :
+- avec `pci_basis: "mass"`, renseigner `pci_mass_unit` et ne pas renseigner
+  `pci_volume_unit` ;
+- avec `pci_basis: "volume"`, renseigner `pci_volume_unit` et ne pas renseigner
+  `pci_mass_unit` ;
+- sans `pci_basis`, ne pas renseigner `pci_value`, `pci_mass_unit` ou
+  `pci_volume_unit`.
+
+#### initial_level
+
+`initial_level` permet de declarer un niveau de depart. Il est optionnel.
+
+Champs :
+- value (float, >= 0) : valeur initiale.
+- unit (str) : unite de la valeur initiale.
+
+Unites acceptees :
+- energie : `"J"`, `"kJ"`, `"MJ"`, `"Wh"`, `"kWh"`, `"MWh"`.
+- masse : `"kg"`, `"t"`.
+- volume : `"m3"`, `"l"`.
+
+Regles :
+- si `initial_level` est donne en masse ou volume, `vector_params` doit fournir
+  un PCI permettant la conversion vers l'energie ;
+- la conversion croisee masse <-> volume necessite `density_kg_m3`.
 
 Compatibilite de nommage :
 - `vector_energy` est le champ recommande.
@@ -290,7 +587,7 @@ Exemple (diesel, niveau initial en litres) :
 ```yaml
 storages:
   - id: "fuel_tank"
-    bus: "Chemical:fuel"
+    bus: "fuel_bus"
     vector_energy: "diesel"
     vector_params:
       pci_basis: "mass"
@@ -306,7 +603,7 @@ Exemple (base volumique) :
 ```yaml
 storages:
   - id: "h2_tank"
-    bus: "Chemical:h2"
+    bus: "h2_bus"
     vector_energy: "h2"
     vector_params:
       pci_basis: "volume"
@@ -318,31 +615,12 @@ Exemple (stockage electrique, niveau initial en kWh) :
 ```yaml
 storages:
   - id: "battery_pack"
-    bus: "Electrical:main"
+    bus: "battery_bus"
     vector_energy: "battery"
     initial_level:
       value: 32
       unit: "kWh"
 ```
-
-## Kinds disponibles
-
-### Adapters
-- speed_to_power_poly
-  - params: {coeffs: list[float], clip_min: float | None}
-- force_and_speed_to_power
-  - params: {force_source, speed_source, force_unit_in, speed_unit_in, clip_min}
-- speed_to_force_poly
-  - params: {coeffs: list[float], clip_min: float | None}
-- speed_to_eta_poly
-  - params: {coeffs: list[float]}
-
-### Converters
-- constant_eta
-  - params: {eta: float}
-- variable_eta
-  - params: {eta_default: float, eta_source: str | None}
-  - note: eta_default est un fallback si aucun profil eta(t) n'est attache
 
 ## Exemple YAML complet
 Exemple complet (style storage_dev) :
@@ -394,12 +672,12 @@ adapters:
 
 inputs:
   - id: "shaft_demand"
-    bus: "Mechanical:shaft"
+    bus: "shaft_bus"
     source: "shaft_power_from_speed"
     sign: "consume"
 
   - id: "navops"
-    bus: "Electrical:main"
+    bus: "main_electrical_bus"
     source: "hotel_load"
     sign: "consume"
 
@@ -407,24 +685,24 @@ solver:
   mode: "inverse"
 
 buses:
-  - id: "Mechanical:shaft"
+  - id: "shaft_bus"
     carrier: "Mechanical"
-  - id: "Electrical:main"
+  - id: "main_electrical_bus"
     carrier: "Electrical"
-  - id: "Chemical:fuel"
+  - id: "fuel_bus"
     carrier: "Chemical"
 
 converters:
   - id: "motor"
-    from_bus: "Electrical:main"
-    to_bus: "Mechanical:shaft"
+    from_bus: "main_electrical_bus"
+    to_bus: "shaft_bus"
     kind: "constant_eta"
     params:
       eta: 0.9
 
   - id: "genset"
-    from_bus: "Chemical:fuel"
-    to_bus: "Electrical:main"
+    from_bus: "fuel_bus"
+    to_bus: "main_electrical_bus"
     kind: "variable_eta"
     params:
       eta_default: 0.38
@@ -432,6 +710,6 @@ converters:
 
 storages:
   - id: "fuel_tank"
-    bus: "Chemical:fuel"
-    vecteur: "diesel"
+    bus: "fuel_bus"
+    vector_energy: "diesel"
 ```
