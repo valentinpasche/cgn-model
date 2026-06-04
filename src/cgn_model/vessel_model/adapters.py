@@ -51,6 +51,24 @@ Le `kind` multi-source doit aussi etre declare dans `vessel_model.config`
 (`MULTISOURCE_KINDS`) afin que la validation YAML connaisse les cles de sources
 attendues dans `params`.
 
+Principe `apply()` / `apply_multi()`
+-----------------------------------
+`Vessel` materialise les adapters en appelant toujours `apply_multi(inputs)`.
+Cette interface unique simplifie l'orchestration : un adapter recoit un mapping
+`source_id -> (array, unit)`, quel que soit son nombre de sources.
+
+Pour les adapters mono-source, il suffit pourtant d'implementer `apply(series,
+unit)`. La methode `AdapterABC.apply_multi()` fournie par la classe de base :
+
+1. lit `required_sources()` ;
+2. verifie qu'une seule source est attendue ;
+3. recupere `(series, unit)` dans le mapping ;
+4. appelle `apply(series, unit)`.
+
+Les adapters multi-source, comme `force_and_speed_to_power`, surchargent
+`required_sources()` et `apply_multi()` parce qu'ils doivent lire plusieurs
+signaux et combiner leurs unites avant de calculer la sortie.
+
 Si ce nouveau adaptateur doit aussi etre cree depuis l'interface web ou
 documente pour les utilisateurs YAML, il faudra mettre a jour les couches UI,
 les exemples et la documentation externe correspondants.
