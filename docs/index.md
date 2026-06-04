@@ -36,8 +36,8 @@ mais ne sont pas necessaires pour l'utilisation courante.
   course ou etape, et generation de profils `nav_speed`.
 - [Exemple V1](example_v1.md) : exemple complet depuis un YAML jusqu'au CSV de
   resultats.
-- [Notes forward vs inverse](../dev/docs/forward_vs_inverse.md) : note de
-  developpement sur les modes de resolution.
+- [Forward vs inverse](forward_vs_inverse.md) : explication des modes de
+  resolution avec exemples numeriques.
 
 ## Parcours conseille
 
@@ -48,7 +48,7 @@ Pour une premiere prise en main :
 2. Parcourir l'[Exemple V1](example_v1.md) pour voir un cas complet.
 3. Lire le [Guide navigation](navigation_guide.md) si le scenario utilise un
    profil `nav_speed`.
-4. Consulter la note [forward vs inverse](../dev/docs/forward_vs_inverse.md) si
+4. Consulter la note [forward vs inverse](forward_vs_inverse.md) si
    le fonctionnement du solveur DAG doit etre explique plus en detail.
 
 ## Exemples de reference
