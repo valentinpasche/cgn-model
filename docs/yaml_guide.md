@@ -12,7 +12,7 @@ d'utilisation du modele en mode script.
 ## Vue d'ensemble du modele
 > Note: pour un exemple complet (YAML + script), voir [docs/example_v1.md](example_v1.md).
 
-- Le solveur (energy_solver) calcule les bilans d'energie sur un DAG de bus + convertisseurs.
+- Le solveur (energy_solver) calcule les bilans d'energie sur un DAG (graphe oriente acyclique) de bus + convertisseurs.
 - Les profils (profiles) sont des signaux bruts (vitesse, charges, etc.).
 - Les adapters transforment ces profils (ex. vitesse -> puissance) et produisent des signaux utilisables par les inputs ou convertisseurs.
 - Les inputs lient un signal (profile/adapter) a un bus du solver avec une convention de signe.
@@ -35,6 +35,12 @@ Note importante :
 - Le DAG (buses + converters) doit suivre le sens physique du flux d'energie (from_bus -> to_bus).
 - En dehors du DAG, les adapters suivent la convention de nommage (ex. speed_to_power_poly).
 
+Notes de lecture :
+- Les termes propres au modele (`profiles`, `adapters`, `inputs`, `buses`,
+  `converters`, `storages`, etc.) sont detailles dans les sections YAML
+  correspondantes ci-dessous et dans le lexique des modules et classes.
+- Un exemple YAML complet est disponible a la fin de ce document.
+
 ## Sections du YAML
 
 ### vessel
@@ -52,6 +58,8 @@ vessel:
   vessel_type: "DE"
 ```
 
+---
+
 ### simulation
 Parametres globaux.
 
@@ -63,6 +71,8 @@ Exemple :
 simulation:
   dt: 1.0
 ```
+
+---
 
 ### profiles
 Declaration des profils bruts. Points d'entree temporels du modele.
@@ -184,6 +194,8 @@ Exemple :
     allow_delay: true
   master: true
 ```
+
+---
 
 ### adapters
 Transformations de profils (ex. vitesse -> puissance).
@@ -380,6 +392,8 @@ Exemple :
     coeffs: [0.0, 1.0]
 ```
 
+---
+
 ### inputs
 Liaison d'un signal (profile/adapter) vers un input du solver.
 
@@ -413,6 +427,8 @@ Exemple :
   sign: "consume"
 ```
 
+---
+
 ### solver
 Champs :
 - mode (str) : "inverse" | "forward" (forward non valide pour l'instant)
@@ -425,6 +441,8 @@ Exemple :
 solver:
   mode: "inverse"
 ```
+
+---
 
 ### buses
 Declaration des bus du solver.
@@ -458,6 +476,8 @@ buses:
   - id: "fuel_bus"
     carrier: "Chemical"
 ```
+
+---
 
 ### converters
 Convertisseurs du solver (transfert de puissance entre deux bus).
@@ -512,6 +532,8 @@ converters:
       eta_default: 0.90
       eta_source: "eta_from_speed"
 ```
+
+---
 
 ### storages (optionnel)
 Declaration de bus a post-traiter en stockage.
@@ -624,7 +646,7 @@ storages:
 ```
 
 ## Exemple YAML complet
-Exemple complet (style storage_dev) :
+Exemple complet avec stockage sans PCI :
 
 ```yaml
 vessel:
