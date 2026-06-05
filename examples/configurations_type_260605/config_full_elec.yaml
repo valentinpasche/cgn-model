@@ -1,7 +1,7 @@
 # YAML de configuration, bateau type "Full-Electrique" (batteries)
 
 vessel:
-  name: ""
+  name: "Bateau type full-electrique"
   vessel_type: "undefined" # full-electrique, avec batteries
 
 simulation:
