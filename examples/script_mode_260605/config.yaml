@@ -1,7 +1,7 @@
-# YAML de configuration, 22.12.2025 - CGN model V1
+# YAML de configuration, 05.06.2026 - CGN model v1.2
 
 # Configuration simplifiée du bateau CGN "Vevey"
-# Coefficients validé avec R. Baur le 18.12.2025
+# Coefficients validés avec R. Baur le 18.12.2025
 # - rendement du group "Genset" calculé en fonction de la vitesse
 # [0.111383, 0.035626, 0.004367, -0.000569] (C0-C3 -> m/s to η genset group)
 # - conversion de la vitesse en puissance à l'arbre des roues à aubes
@@ -19,20 +19,18 @@ profiles:
   - id: "hotel_load"
     kind: "constant"
     unit: "W"
-    value: 100e3
+    value: 100e3  # [W]
 
   - id: "speed"
     kind: "nav_speed"
     unit: "m/s"
     source: "cgn_croisieres/all"
     select:
-      by: "cruise"                                # "cruise" | "course" | "leg"
-      cruise_name: "Lavaux - Haut-Lac"                       # si by="cruise"
-      course_no: 982                                         # si by="course"
-      leg: { from_port: "Rolle", to_port: "Yvoire" }         # si by="leg"
+      by: "croisiere"
+      cruise_name: "Lavaux - Haut-Lac"
     params:
-      acc: 0.05            # [m/s²]
-      dec: 0.05            # [m/s²]
+      acc: 0.05          # [m/s²]
+      dec: 0.05          # [m/s²]
       v_croisiere: 7     # [m/s]
       allow_delay: true
 
@@ -96,4 +94,12 @@ converters:
 storages:
   - id: "fuel_tank"
     bus: "fuel"
-    vecteur: "diesel"
+    vector_energy: "diesel"
+    vector_params:
+      pci_basis: "mass"
+      pci_value: 11.86  # [kWh/kg]
+      pci_mass_unit: "kWh/kg"
+      density_kg_m3: 840.0  # [kg/m³]
+    initial_level:
+      value: 1000  # [litres]
+      unit: "l"

@@ -10,7 +10,7 @@ Le document sert donc a la fois de reference des champs YAML et de guide
 d'utilisation du modele en mode script.
 
 ## Vue d'ensemble du modele
-> Note: pour un exemple complet (YAML + script), voir [docs/example_v1.md](example_v1.md).
+> Note: pour un exemple complet (YAML + script), voir [docs/example_script.md](example_script.md).
 
 - Le solveur (energy_solver) calcule les bilans d'energie sur un DAG (graphe oriente acyclique) de bus + convertisseurs.
 - Les profils (profiles) sont des signaux bruts (vitesse, charges, etc.).
