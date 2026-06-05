@@ -159,6 +159,16 @@ simulation.
 4. vérifie que le graphe des convertisseurs est acyclique ;
 5. détermine le plan ordonné d'exécution des convertisseurs.
 
+Le graphe de visualisation peut être affiché pour contrôler la configuration :
+
+```python
+vessel.solver.draw_dag()              # graphe avec les inputs
+vessel.solver.draw_dag(which="exec")  # graphe utilisé pour le calcul
+```
+
+Cette méthode est destinée à l'inspection et au débogage. Elle ne modifie pas
+le calcul.
+
 En mode `inverse`, le plan parcourt les convertisseurs depuis les besoins aval
 vers les sources amont.
 

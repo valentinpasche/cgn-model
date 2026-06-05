@@ -13,7 +13,8 @@ Dossier : `examples/script_mode_260605`
 
 ## Principe general
 
-> Note: pour le guide complet de creation du YAML, voir [docs/yaml_guide.md](yaml_guide.md).
+> Note: pour le guide complet de creation du YAML, voir
+> [Guide d'utilisation du modele en mode script](script_guide.md).
 
 1) Le YAML decrit le vessel (profils, adaptateurs, inputs) et le solver (buses, convertisseurs).
 2) `Vessel.from_yaml(...)` charge tout et prepare les objets.

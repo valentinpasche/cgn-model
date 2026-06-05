@@ -657,7 +657,11 @@ storages:
 ```
 
 ## Exemple YAML complet
+
 Exemple complet avec stockage sans PCI :
+
+*Pour un exemple avec un stockage détaillé comprenant un PCI, une densité et un
+niveau initial, voir [`examples/script_mode_260605`](../examples/script_mode_260605/).*
 
 ```yaml
 vessel:
