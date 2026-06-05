@@ -1,16 +1,27 @@
-# Guide YAML (config d'entree)
+# Guide d’utilisation du modèle en mode *script*
 
-Ce document explique comment definir un fichier YAML d'entree pour utiliser le
-modele CGN sans passer par l'interface graphique. Le YAML est le point d'entree
-principal du calcul : il decrit les profils, les transformations, les liaisons
-vers le solveur, les bus d'energie, les convertisseurs et les stockages a
+Ce document explique comment utiliser le modèle CGN en mode script, sans passer
+par l’interface graphique. La configuration YAML constitue le point d’entrée
+principal du calcul : elle décrit les profils, les transformations, les liaisons
+vers le solveur, les bus d’énergie, les convertisseurs et les stockages à
 post-traiter.
 
-Le document sert donc a la fois de reference des champs YAML et de guide
-d'utilisation du modele en mode script.
+Le document sert à la fois de guide d’utilisation en mode script et de référence
+des champs YAML disponibles.
+
+## Comment utiliser ce document
+
+Pour une premiere prise en main, commencer par
+[l'exemple d'utilisation en mode script](example_script.md), qui presente un
+calcul complet et directement executable.
+
+Le present document sert ensuite de reference pour comprendre et modifier
+chaque section de la configuration YAML.
+
+Une documentation distincte sur la structure du modele et le deroulement
+interne du calcul (`model_workflow.md`) completera ce guide.
 
 ## Vue d'ensemble du modele
-> Note: pour un exemple complet (YAML + script), voir [docs/example_script.md](example_script.md).
 
 - Le solveur (energy_solver) calcule les bilans d'energie sur un DAG (graphe oriente acyclique) de bus + convertisseurs.
 - Les profils (profiles) sont des signaux bruts (vitesse, charges, etc.).
