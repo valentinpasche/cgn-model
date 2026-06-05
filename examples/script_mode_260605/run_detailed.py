@@ -26,6 +26,15 @@ vessel.tally_storages()
 # ---- 6) Accès aux résultats
 df = vessel.results_dataframe()
 
+# Extraction optionnelle d'une sélection de résultats.
+df_selected = vessel.results_dataframe(
+    ids=[
+        "speed",
+        "motor",
+        "fuel_tank",
+    ]
+)
+
 # ---- 7) Affichage des résultats
 time = df["time_s"]
 speed = df["profile_speed_m_per_s"]
@@ -62,14 +71,4 @@ plt.show()
 
 # ---- 8) Sauvegarde des résultats
 results_path = example_dir / "results.csv"
-cols = [
-    "time_s",
-    "profile_speed_m_per_s",
-    "converter_motor_out_W",
-    "converter_genset_out_W",
-    "storage_fuel_tank_e_cum_J",
-    "storage_fuel_tank_v_stock_l",
-]
-df_export = df[cols].copy()
-
-# df_export.to_csv(results_path, sep=";", index=False)
+# df_selected.to_csv(results_path, sep=";", index=False)
