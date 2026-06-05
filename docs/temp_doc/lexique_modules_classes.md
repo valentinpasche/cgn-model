@@ -1,16 +1,22 @@
-# Lexique des modules, classes et objets CGN-model
+# Reference des modules, classes et notions principales
 
 ## Perimetre
 
-Ce lexique documente les objets principaux du package `cgn_model`, hors modules
-d'interface utilisateur :
+Ce document combine un glossaire des notions transversales et une reference
+simplifiee des principaux modules, classes et fonctions du package `cgn_model`.
+Il permet d'identifier rapidement le role et les responsabilites de chaque
+composant, sans remplacer les docstrings detaillees du code.
+
+La reference couvre le package `cgn_model`, hors modules d'interface
+utilisateur :
 
 - inclus : `energy_solver`, `vessel_model`, `navigation` ;
 - exclus : `web_mvp`, `web_ui_v2`.
 
-L'objectif est de donner une definition statique des modules/classes et de leur
-role dans l'architecture. Ce document ne remplace pas les docstrings : il sert de
-vue explicative pour comprendre les objets et leurs responsabilites.
+L'objectif n'est pas de fournir une documentation API exhaustive avec toutes les
+signatures, valeurs de retour et exceptions. Le document sert de cartographie
+du code pour comprendre rapidement qui fait quoi et retrouver le module
+responsable d'un traitement.
 
 ## Notions transversales
 
@@ -28,18 +34,18 @@ de serie, lu depuis un fichier CSV, ou construit depuis les horaires de
 navigation CGN. Un profil possede un identifiant, une unite et un vecteur de
 donnees.
 
-### Signal
-
-Terme general pour une grandeur 1D materialisee sous forme de tableau numpy avec
-une unite. Dans `Vessel`, les signaux regroupent les profils bruts et les sorties
-d'adapters.
-
 ### Adapter
 
 Transformation entre un ou plusieurs signaux d'entree et un signal de sortie.
 Exemples : vitesse vers puissance, vitesse vers force, force et vitesse vers
 puissance, vitesse vers rendement. Un adapter ne gere pas la convention de signe
 du solver ; il produit une grandeur physique.
+
+### Signal
+
+Terme general pour une grandeur 1D materialisee sous forme de tableau numpy avec
+une unite. Dans `Vessel`, les signaux regroupent les profils bruts et les sorties
+d'adapters.
 
 ### Input
 
@@ -57,8 +63,9 @@ de puissance instantanee. Il porte un identifiant, un carrier descriptif
 
 Composant qui relie deux bus et convertit une puissance d'un bus amont vers un
 bus aval. Le sens `from_bus -> to_bus` correspond au sens physique nominal. Un
-convertisseur expose une methode directe `forward` et une methode inverse
-`inverse`.
+convertisseur expose une methode inverse `inverse` et une methode directe
+`forward`. Le mode global `forward` du solveur n'est toutefois pas encore
+valide sur un cas physique de reference.
 
 ### DAG
 
@@ -69,14 +76,15 @@ cycle permet de calculer un ordre d'execution deterministe.
 ### Plan
 
 Liste ordonnee d'aretes du DAG a parcourir pendant la resolution. En mode
-`inverse`, le plan remonte la chaine energetique depuis les besoins aval. En
-mode `forward`, il suivrait le sens physique du flux, mais ce mode est marque
-non verifie dans le code actuel.
+`inverse`, le plan remonte la chaine energetique depuis les besoins aval. Son
+ordre est determine a partir du tri topologique du DAG et du mode de resolution.
 
 ### Ledger
 
 Registre interne d'un bus. Il conserve les contributions par input ou par
-convertisseur, ce qui permet de retracer comment le bilan du bus a ete construit.
+convertisseur, ainsi que leur effet mathematique sur le bilan du bus. Il permet
+de retracer comment `net_w` a ete construit, mais ne constitue pas un historique
+sequentiel complet de toutes les operations executees.
 
 ### Storage
 
@@ -280,7 +288,7 @@ Parametres du convertisseur `variable_eta`. Il contient :
 
 Convertisseur a rendement variable dans le temps. Si un profil `eta_profile` est
 attache, les methodes `forward` et `inverse` utilisent ce profil. Sinon, le
-convertisseur utilise `eta_default`.
+convertisseur utilise `eta_default`, qui est constant.
 
 Il est utile lorsque le rendement depend d'un autre signal, par exemple une
 vitesse ou une charge.
@@ -858,9 +866,9 @@ Propriete d'affichage qui imprime un resume lisible en console.
 Orchestrateur metier du modele. Il relie YAML, profils, adapters, inputs,
 solveur et stockages.
 
-Depuis le refactor, `vessel.py` conserve le role de coordination principale,
-tandis que plusieurs traitements auxiliaires sont deplaces dans des modules
-dedies :
+Dans l'organisation actuelle, `vessel.py` conserve le role de coordination
+principale, tandis que plusieurs traitements auxiliaires sont regroupes dans
+des modules dedies :
 
 - `profiles.py` pour la preparation des profils ;
 - `signals.py` pour les bindings d'inputs et les conventions de signe ;
@@ -1033,7 +1041,7 @@ Sequence d'etapes correspondant a un numero de course. Elle fournit des
 proprietes derivees : ports de depart/arrivee, duree, distance totale, temps de
 navigation, temps de pause et vitesse moyenne.
 
-Sa methode `speed_profile` concatene les profils des etapes.
+Sa methode `speed_profile` concatene les profils des etapes qui composent la course.
 
 ### `Croisiere`
 
