@@ -18,7 +18,7 @@ profiles:
     unit: "m/s"
     source: "cgn_croisieres/all"
     select:
-      by: "cruise"                                # "cruise" | "course" | "leg"
+      by: "etape"           # "cruise" | "course" | "leg" (ou alias francais)
       cruise_name: "Lavaux - Haut-Lac"                       # si by="cruise"
       course_no: 982                                         # si by="course"
       leg: { from_port: "Rolle", to_port: "Yvoire" }         # si by="leg"

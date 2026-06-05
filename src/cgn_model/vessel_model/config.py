@@ -178,8 +178,10 @@ class NavSpeedProfileCfg(ProfileCfgBase):
     @classmethod
     def _normalise_select(cls, v: Any) -> Any:
         """
-        Autorise les trois clés connues {cruise_name, course_no, leg}
-        mais ne garde que celle requise par 'by'. Refuse toute clé inconnue.
+        Normalise les alias francais de `by`, puis garde la cle requise.
+
+        Les valeurs conservees apres validation sont toujours les valeurs
+        canoniques `cruise`, `course` et `leg`. Toute cle inconnue reste refusee.
         """
         if not isinstance(v, dict):
             return v
@@ -189,6 +191,15 @@ class NavSpeedProfileCfg(ProfileCfgBase):
             raise ValueError(f"Clés inconnues dans select: {sorted(unknown)}")
 
         by = v.get("by")
+        if isinstance(by, str):
+            by = by.strip().lower()
+            by = {
+                "croisiere": "cruise",
+                "croisière": "cruise",
+                "etape": "leg",
+                "étape": "leg",
+            }.get(by, by)
+
         if by == "cruise":
             return {"by": "cruise", "cruise_name": v.get("cruise_name")}
         if by == "course":
@@ -535,8 +546,6 @@ class VesselSectionsCfg(BaseModel):
             raise ValueError("Vessel sections invalides:\n- " + "\n- ".join(errs))
 
         return self
-
-
 
 
 

@@ -142,7 +142,8 @@ pertinente pour une analyse macro comme celle visee ici.
 Champs :
 - source (str) : "cgn_croisieres/<name>" (ex. "cgn_croisieres/all"). Le prefixe `cgn_croisieres/` est requis.
 - select (dict) : selection par croisiere / course / etape
-  - by: "cruise" | "course" | "leg"
+  - by: "cruise" | "course" | "leg". Alias francais acceptes :
+    `"croisiere"`/`"croisière"` et `"etape"`/`"étape"`.
   - cruise_name (str) si by="cruise"
   - course_no (int) si by="course"
   - leg: {from_port: str, to_port: str} si by="leg"
