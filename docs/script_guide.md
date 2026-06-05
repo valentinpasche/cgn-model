@@ -18,8 +18,8 @@ calcul complet et directement executable.
 Le present document sert ensuite de reference pour comprendre et modifier
 chaque section de la configuration YAML.
 
-Une documentation distincte sur la structure du modele et le deroulement
-interne du calcul (`model_workflow.md`) complete ce guide.
+Pour comprendre la structure du modele et le deroulement interne du calcul,
+consulter [Structure et deroulement du calcul](model_workflow.md).
 
 ## Vue d'ensemble du modele
 
