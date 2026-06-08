@@ -1,6 +1,8 @@
 @echo off
 setlocal
 
+REM Chemin vers conda.bat. A adapter selon l'installation:
+REM miniconda, miniconda3, Miniconda3, anaconda3, ou chemin complet.
 call "%UserProfile%\miniconda\condabin\conda.bat" activate cgnmodel
 if errorlevel 1 (
     echo [ERREUR] Impossible d'activer l'environnement conda "cgnmodel".
@@ -8,6 +10,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Serveur Dash local utilise par cgnmodel-gui.
 start "" "http://127.0.0.1:8050"
 cgnmodel-gui
 set "EXIT_CODE=%ERRORLEVEL%"
