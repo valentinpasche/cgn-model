@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import webbrowser
+from pathlib import Path
 
 from dash import Dash
 
@@ -22,7 +23,13 @@ from cgn_model.web_ui_v2.services.storage import init_db
 
 
 init_db()
-app = Dash(__name__, suppress_callback_exceptions=True)
+_assets_dir = Path(__file__).resolve().parents[1] / "web_mvp" / "assets"
+app = Dash(
+    __name__,
+    suppress_callback_exceptions=True,
+    assets_folder=str(_assets_dir),
+    assets_url_path="/assets",
+)
 app.title = "CGN UI V2 - Composants"
 app.layout = build_layout()
 register_callbacks(app)

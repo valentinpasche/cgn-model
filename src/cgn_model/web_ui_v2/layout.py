@@ -14,6 +14,51 @@ from cgn_model.web_ui_v2.registry import (
 )
 
 
+def _credits_footer():
+    return html.Div(
+        [
+            html.Img(
+                src="/assets/CGN_logo.svg",
+                alt="CGN logo",
+                style={"height": "34px", "width": "auto"},
+            ),
+            html.P(
+                "Interface realisee pour `CGN Model`, basée sur `Dash pydantic form` - credits: V. Pasche (HEIA-FR) + R. Baur (CGN)",
+                style={"margin": 0, "fontWeight": 600},
+            ),
+            html.Div(
+                [
+                    html.Img(
+                        src="/assets/SeSi_logo.svg",
+                        alt="SeSi logo",
+                        style={"height": "34px", "width": "auto", "marginRight": "30px"},
+                    ),
+                    html.Img(
+                        src="/assets/HEIA_FR_logo.svg",
+                        alt="HEIA-FR logo",
+                        style={"height": "34px", "width": "auto", "marginRight": "100px"},
+                    ),
+                ]
+            ),
+        ],
+        style={
+            "position": "fixed",
+            "left": 0,
+            "right": 0,
+            "bottom": 0,
+            "display": "flex",
+            "justifyContent": "space-between",
+            "alignItems": "center",
+            "padding": "8px 16px",
+            "fontSize": "0.9rem",
+            "color": "#1f2937",
+            "background": "#f8fafc",
+            "borderTop": "1px solid #d1d5db",
+            "zIndex": 1000,
+        },
+    )
+
+
 def build_layout():
     default_key = "profile.nav_speed"
     return dmc.MantineProvider(
@@ -319,7 +364,8 @@ def build_layout():
                         "alignItems": "start",
                     },
                 ),
+                _credits_footer(),
             ],
-            style={"margin": "16px"},
+            style={"margin": "16px", "paddingBottom": "64px"},
         )
     )
