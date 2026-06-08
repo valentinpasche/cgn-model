@@ -1,4 +1,4 @@
-# cgn_model/vessel_model/utils.py
+# cgn_model/vessel_model/energy_units.py
 
 from __future__ import annotations
 
@@ -14,6 +14,16 @@ type StorageLevelUnit = Literal[
     "J", "kJ", "MJ", "Wh", "kWh", "MWh",
     "kg", "t",
     "m3", "l",
+]
+
+__all__ = [
+    "PCI_Massic_Unit",
+    "PCI_Volumic_Unit",
+    "StorageLevelUnit",
+    "pci_to_j_per_kg",
+    "pci_to_j_per_m3",
+    "energy_to_j",
+    "level_to_j",
 ]
 
 
@@ -34,7 +44,21 @@ _VOLUMIC_TO_J_PER_M3: dict[str, float] = {
 
 
 def pci_to_j_per_kg(value: float, unit: PCI_Massic_Unit) -> float:
-    """Convertit un PCI massique vers J/kg."""
+    """
+    Convertit un PCI massique vers J/kg.
+
+    Parameters
+    ----------
+    value : float
+        Valeur du PCI massique.
+    unit : PCI_Massic_Unit
+        Unite de `value` (`J/kg`, `kJ/kg`, `MJ/kg` ou `kWh/kg`).
+
+    Returns
+    -------
+    float
+        PCI en J/kg.
+    """
     factor = _MASSIC_TO_J_PER_KG[str(unit)]
     out = float(value) * factor
     if out <= 0:
@@ -43,7 +67,21 @@ def pci_to_j_per_kg(value: float, unit: PCI_Massic_Unit) -> float:
 
 
 def pci_to_j_per_m3(value: float, unit: PCI_Volumic_Unit) -> float:
-    """Convertit un PCI volumique vers J/m3."""
+    """
+    Convertit un PCI volumique vers J/m3.
+
+    Parameters
+    ----------
+    value : float
+        Valeur du PCI volumique.
+    unit : PCI_Volumic_Unit
+        Unite de `value` (`J/m3`, `kJ/m3`, `MJ/m3`, `kWh/m3` ou `kWh/l`).
+
+    Returns
+    -------
+    float
+        PCI en J/m3.
+    """
     factor = _VOLUMIC_TO_J_PER_M3[str(unit)]
     out = float(value) * factor
     if out <= 0:
@@ -54,6 +92,18 @@ def pci_to_j_per_m3(value: float, unit: PCI_Volumic_Unit) -> float:
 def energy_to_j(value: float, unit: StorageLevelUnit) -> float:
     """
     Convertit une énergie en Joules.
+
+    Parameters
+    ----------
+    value : float
+        Valeur energetique.
+    unit : StorageLevelUnit
+        Unite energetique (`J`, `kJ`, `MJ`, `Wh`, `kWh`, `MWh`).
+
+    Returns
+    -------
+    float
+        Energie en J.
     """
     factors = {
         "J": 1.0,
@@ -80,10 +130,29 @@ def level_to_j(
     """
     Convertit un niveau initial (énergie/masse/volume) vers Joules.
 
-    Règles:
-    - unité énergie: conversion directe;
-    - masse (kg/t): nécessite pci_j_per_kg, ou pci_j_per_m3 + density;
-    - volume (m3/l): nécessite pci_j_per_m3, ou pci_j_per_kg + density.
+    Parameters
+    ----------
+    value : float
+        Niveau initial a convertir.
+    unit : StorageLevelUnit
+        Unite de `value` : energie, masse (`kg`, `t`) ou volume (`m3`, `l`).
+    pci_j_per_kg : float | None, optional
+        PCI massique [J/kg].
+    pci_j_per_m3 : float | None, optional
+        PCI volumique [J/m3].
+    density_kg_m3 : float | None, optional
+        Densite [kg/m3] pour convertir masse et volume.
+
+    Returns
+    -------
+    float
+        Niveau initial equivalent en J.
+
+    Notes
+    -----
+    - unite energie: conversion directe;
+    - masse (kg/t): necessite pci_j_per_kg, ou pci_j_per_m3 + density;
+    - volume (m3/l): necessite pci_j_per_m3, ou pci_j_per_kg + density.
     """
     v = float(value)
     u = str(unit)

@@ -1,28 +1,84 @@
 # cgn_model/vessel_model/adapters.py
 
 """
-Adapters runtime + registre
+Adapters runtime du `Vessel` et registre de construction.
 
-But
-----
-Transformer des profils *bruts* (ex. vitesse en kn) en signaux utilisables par le solver (W).
-Chaque adapter :
-  - lit une source (id d'un profile ou d'un autre adapter),
-  - convertit l'unité d'entrée vers une unité attendue,
-  - applique une transformation,
-  - produit (array, unit_out) — typiquement 'W' pour alimenter un Input du solver.
-
-API publique (minimale)
------------------------
-- AdapterABC               : contrat runtime
-- AdapterParams            : base Pydantic pour les params
-- register(kind, Model)    : décorateur pour enregistrer un adapter
-- build_adapter_from_cfg() : construit un adapter depuis AdapterCfg
-- convert_unit()           : conversion d'unités stricte (sensible à la casse SI)
-
-Adapter fourni
+Role du module
 --------------
-- kind="poly_speed_to_power" : P = a0 + a1*v + a2*v^2 + ..., avec v en 'm/s' (converti)
+Un adapter transforme un signal metier en signal utilisable par le solver. Il
+lit une ou plusieurs sources deja materialisees par `Vessel` (profils bruts ou
+sorties d'autres adapters), convertit les unites vers l'unite attendue, applique
+une transformation, puis retourne `(array, unit_out)`.
+
+La convention de signe n'est pas appliquee ici. Les adapters produisent des
+grandeurs physiques dans leur unite de sortie; le signe `consume` / `inject` /
+`as_is` est applique plus tard par les bindings d'inputs dans `Vessel`.
+
+Adapters fournis
+----------------
+- `speed_to_power_poly` : vitesse -> puissance, polynome `P(v)`.
+- `force_and_speed_to_power` : force et vitesse -> puissance, produit `P = F*v`.
+- `speed_to_force_poly` : vitesse -> force, polynome `F(v)`.
+- `speed_to_eta_poly` : vitesse -> rendement adimensionnel `eta(v)`.
+- `power_to_power_poly` : puissance -> puissance, correction empirique ou
+  passage direct d'un profil de puissance vers un signal connectable.
+
+Unites
+------
+`convert_unit` applique des conversions strictes par grandeur physique :
+
+- puissance : base W;
+- vitesse : base m/s;
+- force : base N.
+
+Les ecritures SI ambigues sont refusees, par exemple `mw` au lieu de `mW` ou
+`MW`.
+
+Registre et extension
+---------------------
+Le registre interne `REGISTRY` mappe `kind -> (ParamsModel, builder)`.
+`build_adapter_from_cfg(c)` lit `c.kind`, valide `c.params` avec le modele
+Pydantic associe, puis appelle le builder.
+
+Pour ajouter un adapter mono-source :
+
+1. definir un modele de parametres derive de `AdapterParams`;
+2. implementer une classe derivee de `AdapterABC` avec `apply(series, unit)`;
+3. enregistrer un builder avec `@register("nouveau_kind", ParamsModel)`.
+
+Pour un adapter multi-source, surcharger `required_sources()` et `apply_multi()`.
+Le `kind` multi-source doit aussi etre declare dans `vessel_model.config`
+(`MULTISOURCE_KINDS`) afin que la validation YAML connaisse les cles de sources
+attendues dans `params`.
+
+Principe `apply()` / `apply_multi()`
+-----------------------------------
+`Vessel` materialise les adapters en appelant toujours `apply_multi(inputs)`.
+Cette interface unique simplifie l'orchestration : un adapter recoit un mapping
+`source_id -> (array, unit)`, quel que soit son nombre de sources.
+
+Pour les adapters mono-source, il suffit pourtant d'implementer `apply(series,
+unit)`. La methode `AdapterABC.apply_multi()` fournie par la classe de base :
+
+1. lit `required_sources()` ;
+2. verifie qu'une seule source est attendue ;
+3. recupere `(series, unit)` dans le mapping ;
+4. appelle `apply(series, unit)`.
+
+Les adapters multi-source, comme `force_and_speed_to_power`, surchargent
+`required_sources()` et `apply_multi()` parce qu'ils doivent lire plusieurs
+signaux et combiner leurs unites avant de calculer la sortie.
+
+Si ce nouveau adaptateur doit aussi etre cree depuis l'interface web ou
+documente pour les utilisateurs YAML, il faudra mettre a jour les couches UI,
+les exemples et la documentation externe correspondants.
+
+Bonnes pratiques
+----------------
+- Garder les adapters sans effet de bord.
+- Ne pas appliquer de convention de signe dans un adapter; la laisser aux
+  `InputBind`.
+- Preferer des noms de `kind` explicites et stables.
 """
 
 from __future__ import annotations
@@ -38,7 +94,11 @@ from .config import AdapterCfg  # AdapterCfg générique: id, kind, source, unit
 
 type FArray = NDArray[np.floating]
 
-__all__ = ["AdapterABC", "build_adapter_from_cfg"]
+__all__ = [
+    "convert_unit",
+    "AdapterABC",
+    "build_adapter_from_cfg",
+]
 
 # ============================================================
 # ----            Conversion d’unités (stricte)
@@ -343,6 +403,9 @@ class SpeedToPowerPolyAdapter(AdapterABC):
     -----
     - P(v) = a0 + a1*v + a2*v^2 + ...
     - Conversion d'unites automatique vers unit_in.
+    - Les coefficients sont appliques dans l'unite `unit_in`; leur domaine de
+      validite physique doit venir de la configuration ou de la documentation
+      metier externe.
     """
     id: str
     source: str
@@ -354,6 +417,8 @@ class SpeedToPowerPolyAdapter(AdapterABC):
     def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
         # 1) vitesse -> unit_in
         s, _ = convert_unit(series, unit_in=unit, unit_out=self.unit_in, quantity="speed")
+        # TODO: documenter dans les donnees projet l'origine, l'unite d'entree
+        # et le domaine de validite des coefficients polynomiaux.
         # 2) poly
         out = np.zeros_like(s, dtype=np.float64)
         p = np.ones_like(s, dtype=np.float64)
@@ -413,6 +478,8 @@ class ForceAndSpeedToPowerAdapter(AdapterABC):
     -----
     - Ignore source top-level d'AdapterCfg.
     - P = F * v (en SI, W).
+    - La convention de signe n'est pas appliquee dans l'adapter; elle est
+      appliquee plus tard par le binding d'input du `Vessel`.
     """
     id: str
     source: str
@@ -491,6 +558,8 @@ class SpeedToForcePoly(AdapterABC):
     def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
         # 1) vitesse -> unit_in
         v, _ = convert_unit(series, unit_in=unit, unit_out=self.unit_in, quantity="speed")
+        # TODO: documenter dans les donnees projet l'origine, l'unite d'entree
+        # et le domaine de validite des coefficients polynomiaux.
         # 2) polynôme
         out = np.zeros_like(v, dtype=np.float64)
         p = np.ones_like(v, dtype=np.float64)
@@ -508,7 +577,7 @@ def _build_speed_to_force_poly(
 ) -> AdapterABC:
     return SpeedToForcePoly(
         id=id, source=source, unit_in=unit_in, unit_out=unit_out,
-        coeffs=tuple(p.coeffs), clip_min=p.clip_min
+        coeffs=tuple(p.coeffs), clip_min=p.clip_min,
     )
 
 # ============================================================
@@ -536,6 +605,8 @@ class SpeedToEtaPoly(AdapterABC):
     -----
     - eta(v) = a0 + a1*v + a2*v^2 + ...
     - Sortie adimensionnelle pour autowire dans VariableEtaConverter.
+    - Le bornage eventuel de eta(t) est realise lors de l'attachement au
+      convertisseur, pas dans cet adapter.
     """
     id: str
     source: str
@@ -546,6 +617,8 @@ class SpeedToEtaPoly(AdapterABC):
     def apply(self, series: FArray, unit: str) -> tuple[FArray, str]:
         # 1) vitesse -> unit_in
         v, _ = convert_unit(series, unit_in=unit, unit_out=self.unit_in, quantity="speed")
+        # TODO: documenter dans les donnees projet l'origine, l'unite d'entree
+        # et le domaine de validite des coefficients eta(v).
         # 2) polynôme
         eta_profile = np.zeros_like(v, dtype=np.float64)
         p = np.ones_like(v, dtype=np.float64)
@@ -577,6 +650,11 @@ class PowerToPowerPolyAdapter(AdapterABC):
     """
     Adapter puissance -> puissance via polynome.
 
+    Cet adapter sert a transformer un profil de puissance deja disponible en un
+    autre profil de puissance. Il peut etre utilise pour appliquer une correction
+    empirique, changer d'echelle ou fournir un passage explicite entre un profil
+    et le solveur lorsque l'interface impose de passer par un adapter.
+
     Parameters
     ----------
     coeffs : tuple[float, ...]
@@ -592,6 +670,11 @@ class PowerToPowerPolyAdapter(AdapterABC):
     -----
     - P(p) = a0 + a1*p + a2*p^2 + ...
     - Conversion d'unites automatique vers unit_in.
+    - Les coefficients sont appliques a la puissance exprimee dans `unit_in`.
+    - La sortie du polynome est interpretee comme une puissance en W avant
+      conversion vers `unit_out`.
+    - Pour un simple passage direct, utiliser `unit_in="W"`, `unit_out="W"` et
+      `coeffs=(0.0, 1.0)`.
     """
     id: str
     source: str

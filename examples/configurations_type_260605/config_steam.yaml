@@ -1,7 +1,7 @@
 # YAML de configuration, bateau type "vapeur"
 
 vessel:
-  name: ""
+  name: "Bateau type vapeur"
   vessel_type: "steam"
 
 simulation:

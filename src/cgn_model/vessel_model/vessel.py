@@ -2,12 +2,24 @@
 
 """
 Orchestrateur vessel : chargement des profils, adapters et integration solver.
+
+Ce module fait la transition entre la configuration metier du bateau et le
+solveur energetique generique. Le pipeline principal est :
+
+    YAML -> Vessel -> profiles -> adapters -> inputs signes
+         -> SolverDAG.prepare_state/run_vector -> storages/results
+
+Le `Vessel` prepare les signaux, applique les conventions metier (unites,
+signes, sources) et transmet au `SolverDAG` uniquement des profils de puissance
+signes en W. La methode `run()` fournit le workflow utilisateur principal en
+chainant preparation du solver, resolution vectorielle et post-traitement des
+stockages.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 import copy
 import yaml
 import numpy as np
@@ -22,377 +34,34 @@ from cgn_model.vessel_model.config import (
     VesselCfg,
     AdapterCfg,
     InputBindCfg,
+    ProfileCfg,
     VesselSectionsCfg,
-    ProfileCfg,            # Union discriminée: constant/series/file/nav_speed
-    NavSelect,
-    NavParams,
     StorageCfg,
 )
+from cgn_model.vessel_model.profiles import (
+    _load_csv_column,
+    _build_nav_speed,
+    _pick_master_id,
+    Profile,
+)
+from cgn_model.vessel_model.signals import (
+    _apply_sign_policy,
+    _warn_inconsistent_sign,
+    InputBind,
+    Signals,
+)
 from cgn_model.vessel_model.adapters import AdapterABC, build_adapter_from_cfg
-from cgn_model.navigation import Croisiere, SpeedProfileParams
+from cgn_model.vessel_model.results_utils import (
+    results_col_name,
+    unit_from_storage_col,
+    strip_storage_unit_suffix,
+)
 from cgn_model.vessel_model.storage import StorageResult
 
 type FArray = NDArray[np.floating]
 type SolverMode = Mode
 
-
 __all__ = ["Vessel"]
-
-
-# ---------- Helpers I/O & navigation ----------
-def _load_csv_column(
-    file: str,
-    column: str | None,
-    sep: str | None = None,           # <- override possible
-    decimal: str = ".",               # <- "." ou ","
-    encoding: str = "utf-8-sig",      # gère le BOM Excel
-) -> FArray:
-    """
-    Charge une colonne numerique d'un CSV en float64.
-
-    Parameters
-    ----------
-    file : str
-        Chemin du fichier CSV.
-    column : str | None
-        Nom de colonne; si None, utilise la premiere colonne.
-    sep : str | None, optional
-        Separateur CSV. None = auto-detection.
-    decimal : str, optional
-        Separateur decimal ("." ou ",").
-    encoding : str, optional
-        Encodage (ex. "utf-8-sig" pour BOM Excel).
-
-    Returns
-    -------
-    numpy.ndarray
-        Serie 1D en float64.
-    """
-    try:
-        import pandas as pd  # type: ignore
-
-        # Auto-détection via l’engine Python si sep=None
-        if sep is None:
-            df = pd.read_csv(file, sep=None, engine="python", decimal=decimal, encoding=encoding)
-        else:
-            df = pd.read_csv(file, sep=sep, decimal=decimal, encoding=encoding)
-
-        col = column or (df.columns[0] if len(df.columns) else None)
-        if not col or col not in df.columns:
-            raise ValueError(
-                f"Colonne {column!r} introuvable dans {file!r}. "
-                f"Colonnes: {list(df.columns)!r}"
-            )
-
-        arr = df[col].to_numpy(dtype="float64", na_value=np.nan)
-        if np.isnan(arr).any():
-            raise ValueError(f"Valeurs non numériques/NA dans {file!r} colonne {col!r}.")
-        return arr  # type: ignore[return-value]
-
-    except ModuleNotFoundError:
-        import csv
-        # Fallback: tente Sniffer si sep non fourni
-        with open(file, "r", encoding=encoding, newline="") as f:
-            if sep is None:
-                sample = f.read(4096)
-                f.seek(0)
-                try:
-                    dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
-                    sep = dialect.delimiter
-                except csv.Error:
-                    sep = ","  # défaut raisonnable
-            reader = csv.DictReader(f, delimiter=sep)
-            if reader.fieldnames is None:
-                raise ValueError(
-                    f"CSV {file!r} sans en-tête; fournis 'column' ou installe pandas."
-                )
-            col = column or reader.fieldnames[0]
-            if col not in reader.fieldnames:
-                raise ValueError(
-                    f"Colonne {column!r} introuvable dans {file!r}. "
-                    f"Colonnes: {reader.fieldnames!r}"
-                )
-
-            vals: list[float] = []
-            for row in reader:
-                s = row[col]
-                # gérer décimale ","
-                if decimal == ",":
-                    s = s.replace(",", ".")
-                try:
-                    vals.append(float(s))
-                except ValueError as e:
-                    raise ValueError(
-                        f"Valeur non numérique dans {file!r} colonne {col!r}: {row[col]!r}"
-                    ) from e
-        return np.asarray(vals, dtype=np.float64)
-
-def _build_nav_speed(
-    *,
-    source: str,                # ex: "cgn_croisieres/all"
-    select: NavSelect,          # by="cruise" | "course" | "leg"
-    params: NavParams,          # acc/dec/v_croisiere/allow_delay
-    dt: float,                  # pas global [s]
-) -> FArray:
-    """
-    Construit un profil de vitesse [m/s] depuis le module navigation.
-
-    Parameters
-    ----------
-    source : str
-        Source des horaires (ex. "cgn_croisieres/all").
-    select : NavSelect
-        Criteres de selection (cruise, course, leg).
-    params : NavParams
-        Parametres MRUA (acc, dec, v_croisiere, allow_delay).
-    dt : float
-        Pas de temps global [s].
-
-    Returns
-    -------
-    numpy.ndarray
-        Profil de vitesse [m/s].
-    """
-    # 1) charger les croisières depuis la "source"
-    #    Pour l’instant on supporte "cgn_croisieres/<which>"
-    if not source.startswith("cgn_croisieres/"):
-        raise ValueError(f"source nav_speed non supportée: {source!r} (attendu 'cgn_croisieres/<which>')")
-    which = source.split("/", 1)[1] or "all"
-    cruises: list[Croisiere] = Croisiere.from_cgn_croisiere_csv(which)
-
-    # 2) sélectionner l’objet navigation cible
-    target = None
-
-    if select.by == "cruise":
-        name = select.cruise_name
-        for cr in cruises:
-            if getattr(cr, "nom", None) == name:
-                target = cr
-                break
-        if target is None:
-            raise ValueError(f"Croisière {name!r} introuvable dans {which!r}.")
-
-    elif select.by == "course":
-        num = select.course_no
-        for cr in cruises:
-            for c in getattr(cr, "courses", []):
-                if getattr(c, "numero", None) == num:
-                    target = c
-                    break
-            if target is not None:
-                break
-        if target is None:
-            raise ValueError(f"Course n°{num} introuvable dans {which!r}.")
-
-    elif select.by == "leg":
-        leg = select.leg or {}
-        fport = leg.get("from_port"); tport = leg.get("to_port")
-        if not fport or not tport:
-            raise ValueError("select.leg doit contenir {from_port, to_port}.")
-        for cr in cruises:
-            # Etapes dans les courses
-            for c in getattr(cr, "courses", []):
-                for e in getattr(c, "etapes", []):
-                    if getattr(e, "from_port", None) == fport and getattr(e, "to_port", None) == tport:
-                        target = e
-                        break
-                if target is not None:
-                    break
-            if target is not None:
-                break
-            # Etapes "pauses" éventuelles (si pertinent)
-            for e in getattr(cr, "pauses", []) or []:
-                if getattr(e, "from_port", None) == fport and getattr(e, "to_port", None) == tport:
-                    target = e
-                    break
-            if target is not None:
-                break
-        if target is None:
-            raise ValueError(f"Étape {fport!r}->{tport!r} introuvable dans {which!r}.")
-
-    else:
-        raise NotImplementedError(f"select.by={select.by!r} non supporté")
-    
-    # 3) Fusion des paramètres : dt = global ; le reste, override si fourni
-    sp = SpeedProfileParams(dt=float(dt)) # << défaut de référence ici pour dt
-    if params.acc is not None:         sp.acc = float(params.acc)
-    if params.dec is not None:         sp.dec = float(params.dec)
-    if params.v_croisiere is not None: sp.v_croisiere = float(params.v_croisiere)
-    if params.allow_delay is not None: sp.allow_delay = bool(params.allow_delay)
-    
-    # propage la méthode .speed_profil(sp) selon le type (Croisiere/Course/Etape)
-    target.speed_profile(sp)
-    arr = getattr(target, "profile", None)
-    if arr is None:
-        raise RuntimeError("Le module navigation n’a pas produit de 'profile'.")
-    return np.asarray(arr, dtype=np.float64)
-
-
-# ---------- Helpers de "preview" et choix du maître ----------
-def _pick_master_id(profiles_cfg: list[ProfileCfg]) -> str:
-    """
-    Choisit l'ID du profil maitre sans le construire.
-
-    Parameters
-    ----------
-    profiles_cfg : list[ProfileCfg]
-        Liste des profils declares.
-
-    Returns
-    -------
-    str
-        ID du profil maitre.
-
-    Notes
-    -----
-    Priorite de selection:
-    - premier p.master == True (mais pas "constant")
-    - premier "nav_speed"
-    - premier "series" ou "file"
-    - sinon -> erreur (tous constants => ambigu sans longueur de reference)
-    """
-    # 1) master explicite
-    for p in profiles_cfg:
-        if getattr(p, "master", False):
-            if p.kind == "constant":
-                raise ValueError(
-                    f"Profil maître {p.id!r} est 'constant' : une longueur de référence est nécessaire "
-                    "(déclare un nav_speed/series/file maître)."
-                )
-            return p.id
-
-    # 2) premier nav_speed
-    for p in profiles_cfg:
-        if p.kind == "nav_speed":
-            return p.id
-
-    # 3) premier series/file
-    for p in profiles_cfg:
-        if p.kind in ("series", "file"):
-            return p.id
-
-    # 4) sinon
-    raise ValueError(
-        "Aucune longueur de référence trouvée (tous les profils sont 'constant'). "
-        "Déclare un 'nav_speed' ou 'series/file'."
-    )
-
-def _apply_sign_policy(arr: FArray, policy: str, scale: float | int | None) -> FArray:
-    arr = np.asarray(arr, dtype=np.float64)
-    if scale is not None:
-        arr = arr * float(scale)
-    
-    if policy == "consume":  # négatif
-        return -arr
-    if policy == "inject":   # positif
-        return +arr
-    if policy == "as_is":
-        return arr
-    raise ValueError(f"sign policy inconnue: {policy!r}")
-
-def _warn_inconsistent_sign(
-    arr: np.ndarray,
-    expected: Literal["consume", "inject"],
-    *,
-    eps: float = 1e-9,      # tolerance pour "quasi zero"
-    min_count_warn: int = 1, # a partir de combien de points "mauvais signe" on previent
-) -> tuple[int, int, float]:
-    """
-    Detecte les incoherences de signe sur un profil.
-
-    Parameters
-    ----------
-    arr : numpy.ndarray
-        Profil 1D.
-    expected : {"consume", "inject"}
-        Signe attendu.
-    eps : float, optional
-        Tolerance pour quasi-zero.
-    min_count_warn : int, optional
-        Seuil minimal pour emettre un warning.
-
-    Returns
-    -------
-    tuple[int, int, float]
-        (total_utiles, nb_mauvais, frac_mauvais).
-
-    Notes
-    -----
-    - expected = "consume" -> on attend des valeurs <= 0
-    - expected = "inject"  -> on attend des valeurs >= 0
-    """
-    nz = np.abs(arr) > eps            # on ignore ~0
-    total = int(nz.sum())
-    if total == 0:
-        return 0, 0, 0.0
-
-    if expected == "consume":
-        wrong_mask = arr[nz] > 0
-    else:  # 'inject'
-        wrong_mask = arr[nz] < 0
-
-    wrong = int(wrong_mask.sum())
-    frac = wrong / total if total else 0.0
-
-    if wrong >= min_count_warn:
-        warnings.warn(
-            f"Signe inattendu pour sign={expected}: {wrong}/{total} "
-            f"échantillons (~{frac*100:.3f}%). "
-            f"min={arr.min():.3g}, max={arr.max():.3g}",
-            stacklevel=2,
-        )
-
-    return total, wrong, frac
-
-# ---------------- Types & runtime entities ----------------
-
-@dataclass
-class Profile:
-    """
-    Profil brut tel que declare cote YAML.
-
-    Attributes
-    ----------
-    id : str
-        Identifiant du profil.
-    unit : str
-        Unite declaree (ex. "kn", "W", "m/s").
-    data : numpy.ndarray
-        Profil 1D en float64.
-    """
-    id: str
-    unit: str
-    data: FArray
-
-@dataclass
-class InputBind:
-    """
-    Liaison input solver -> source (profil ou adapter).
-
-    Attributes
-    ----------
-    id : str
-        Identifiant de l'input (cote solver).
-    bus : str
-        Bus cible (cote solver).
-    source : str
-        ID d'un Profile ou d'un Adapter.
-    sign : str
-        Convention de signe (consume/inject/as_is).
-    scale : float
-        Facteur d'echelle applique au profil.
-    """
-    id: str
-    bus: str
-    source: str
-    sign: str
-    scale: float = 1.0
-
-
-type Signals = dict[str, tuple[FArray, str]]  # id -> (array, unit)
-
-__all__ = ["Vessel"]
-
 
 # ========================== Vessel ==========================
 
@@ -400,6 +69,25 @@ __all__ = ["Vessel"]
 class Vessel:
     """
     Orchestrateur metier pour preparer le solver et les signaux.
+
+    `Vessel` est la couche de traduction entre le YAML complet et le `SolverDAG`.
+    Il garde les notions metier (profils, navigation, adapters, bindings
+    d'inputs, stockages) et prepare pour le solver une interface plus simple :
+    des bus, des convertisseurs et des profils de puissance signes.
+
+    Pipeline principal
+    ------------------
+    1. lire/valider les metadonnees du bateau ;
+    2. construire le `SolverDAG` depuis les sections solver du YAML ;
+    3. construire les profils bruts (`profiles`) ;
+    4. construire les transformations (`adapters`) ;
+    5. materialiser tous les signaux disponibles ;
+    6. appliquer les bindings d'inputs et les conventions de signe ;
+    7. preparer le solver avec `prepare_state` ;
+    8. post-traiter les stockages et exporter les resultats si besoin.
+
+    Cette classe est volontairement un orchestrateur : elle coordonne plusieurs
+    objets et delegue le calcul de propagation energetique au `SolverDAG`.
 
     Attributes
     ----------
@@ -454,19 +142,33 @@ class Vessel:
         -------
         Vessel
             Instance prete a construire les inputs.
+
+        Notes
+        -----
+        Le YAML contient deux niveaux de responsabilite :
+        - les sections metier (`profiles`, `adapters`, `storages`, etc.) sont
+          conservees et interpretees par `Vessel` ;
+        - les sections energetiques (`solver`, `buses`, `converters`, `inputs`)
+          sont filtrees et preparees par `SolverDAG`.
+
+        Cette separation permet de garder un solveur generique, tout en laissant
+        au `Vessel` la responsabilite de traduire le scenario metier en signaux.
         """
-        # 1) Métadonnées (name, vessel_type)
+        # 1) Metadonnees vessel (name, vessel_type).
         meta = cls._parse_cfg(cfg)
         meta_model = cls._validate_cfg(meta)
 
-        # 2) Solver (utilise le YAML complet ; son _parse_cfg interne filtrera)
+        # 2) Structure solver: bus, convertisseurs, inputs et plan DAG.
+        #    Le SolverDAG filtre lui-meme les sections qui le concernent.
         solver = SolverDAG.from_yaml(cfg)
 
-        # 3) Sections 'métier' (profiles/adapters/inputs) → runtime objects
+        # 3) Sections metier: profils, adapters, bindings d'inputs et stockages.
         raw = cls._extract_sections(cfg)
         sections = VesselSectionsCfg.model_validate(raw)   # declenche cross_checks()
         if check_ids:
             cls._check_id_collisions(sections=sections, solver=solver)
+
+        # 4) Objets runtime cote Vessel.
         dt = float(sections.simulation.dt)
         profiles    = cls._build_profiles(sections.profiles, dt)
         adapters    = cls._build_adapters(sections.adapters)
@@ -476,7 +178,7 @@ class Vessel:
         storages_cfg = list(storages_raw) if storages_raw is not None else []
         storages=None
 
-        # 4) Matérialiser tous les signaux (profiles bruts + adapters)
+        # 5) Materialisation des signaux: profiles bruts + sorties d'adapters.
         signals = cls._materialize_signals(profiles, adapters)
 
         return cls(
@@ -631,9 +333,31 @@ class Vessel:
 # -------- Builders runtime --------    
     @staticmethod
     def _build_profiles(cfg_profiles: list[ProfileCfg], dt: float) -> dict[str, Profile]:
+        """
+        Construit les profils runtime et harmonise leur longueur temporelle.
+
+        Parameters
+        ----------
+        cfg_profiles : list[ProfileCfg]
+            Profils declares dans le YAML (constant, series, file ou nav_speed).
+        dt : float
+            Pas de temps global [s], transmis aux profils de navigation.
+
+        Returns
+        -------
+        dict[str, Profile]
+            Profils 1D prets a alimenter les adapters ou les inputs.
+
+        Notes
+        -----
+        Le profil maitre fixe la longueur N. Les profils constants sont etendus
+        a cette longueur, tandis que les series/fichiers doivent deja avoir la
+        meme longueur.
+        """
         profiles: dict[str, Profile] = {}
     
-        # --- 1) choisir et construire le maître (une seule fois)
+        # Le maitre fixe l'horizon temporel N sans construire plusieurs fois
+        # un profil de navigation potentiellement couteux.
         master_id = _pick_master_id(cfg_profiles)
         master_obj = next(p for p in cfg_profiles if p.id == master_id)
     
@@ -661,7 +385,9 @@ class Vessel:
         N = int(data.shape[0])
         profiles[master_obj.id] = Profile(id=master_obj.id, unit=master_obj.unit, data=data)
     
-        # --- 2) construire les autres profils en s'alignant sur N
+        # Les profils non maitres doivent partager l'horizon N. Une constante
+        # scalaire est diffusee sur N; une serie explicite doit deja avoir N
+        # points pour eviter une interpolation implicite.
         for p in cfg_profiles:
             if p.id == master_id:
                 continue
@@ -707,11 +433,37 @@ class Vessel:
 
     @staticmethod
     def _build_adapters(cfg_adapters: list[AdapterCfg]) -> dict[str, AdapterABC]:
+        """
+        Instancie les adapters runtime depuis les configurations validees.
+
+        Parameters
+        ----------
+        cfg_adapters : list[AdapterCfg]
+            Configurations d'adapters issues du YAML.
+
+        Returns
+        -------
+        dict[str, AdapterABC]
+            Adapters indexes par ID.
+        """
         adapters = {a.id: build_adapter_from_cfg(a) for a in cfg_adapters}
         return adapters
 
     @staticmethod
     def _build_input_binds(cfg_inputs: list[InputBindCfg]) -> list[InputBind]:
+        """
+        Convertit les bindings YAML en dataclasses runtime.
+
+        Parameters
+        ----------
+        cfg_inputs : list[InputBindCfg]
+            Liaisons input solver -> signal source.
+
+        Returns
+        -------
+        list[InputBind]
+            Bindings conservant bus, source, convention de signe et scale.
+        """
         binds: list[InputBind] = []
         for b in cfg_inputs:
             # Construire les kwargs sans 'scale' si absent -> la dataclass appliquera 1.0
@@ -751,9 +503,10 @@ class Vessel:
             for aid, adapter in remaining.items():
                 req = adapter.required_sources()
                 if all(sid in signals for sid in req):
-                    # construire inputs -> (array, unit)
+                    # Les adapters sont materialises uniquement quand toutes
+                    # leurs sources sont deja disponibles; cela donne un ordre
+                    # topologique sans dupliquer la logique de validation.
                     inputs = {sid: signals[sid] for sid in req}
-                    # multi-entrées si surchargé, sinon mono-entrée via apply
                     out_series, out_unit = adapter.apply_multi(inputs)
                     signals[aid] = (out_series, out_unit)
                     progressed.append(aid)
@@ -765,7 +518,7 @@ class Vessel:
                 raise RuntimeError(f"Cycle ou sources manquantes dans les adapters: {missing}")
         return signals
 
-    # -------- Préparation des inputs pour le solver --------
+    # -------- Pipeline: signaux Vessel -> profils signes du SolverDAG --------
     def build_solver_inputs(
         self,
         *,
@@ -773,6 +526,41 @@ class Vessel:
         verbose: bool = False,
         auto_convert: bool = False,
     ) -> dict[str, FArray] | dict[str, tuple[str, FArray]]:
+        """
+        Prepare les profils d'inputs attendus par `prepare_state`.
+
+        Cette methode est le point de passage entre les signaux metier du
+        `Vessel` et les inputs numeriques du `SolverDAG`. Elle recupere la
+        source declaree par chaque `InputBind`, convertit eventuellement le
+        signal en W, applique `scale`, puis applique la convention de signe.
+
+        Parameters
+        ----------
+        profiles_only : bool, optional
+            Si True, retourne uniquement ``{input_id: array}``. Sinon retourne
+            ``{input_id: (bus_id, array)}`` pour permettre le controle du bus.
+        verbose : bool, optional
+            Affiche un resume des profils construits.
+        auto_convert : bool, optional
+            Convertit automatiquement vers W lorsque la source n'est pas deja
+            dans l'unite du solver.
+
+        Returns
+        -------
+        dict[str, FArray] | dict[str, tuple[str, FArray]]
+            Profils 1D signes en W, indexes par ID d'input solver.
+
+        Notes
+        -----
+        Convention solver :
+        - valeur positive : injection sur le bus ;
+        - valeur negative : demande/retrait sur le bus.
+
+        Convention YAML :
+        - ``sign: consume`` force le profil en negatif ;
+        - ``sign: inject`` force le profil en positif ;
+        - ``sign: as_is`` conserve le signe de la source.
+        """
         if self.signals is None or self.input_binds is None:
             raise RuntimeError("Vessel non initialisé (signals/input_binds manquants).")
     
@@ -817,10 +605,13 @@ class Vessel:
             if not np.isfinite(arr_w).all():
                 raise ValueError(f"Profil {bind.id!r}: valeurs non finies (NaN/Inf) détectées.")
     
-            # sign/scale (policy)
+            # La convention de signe est appliquee au dernier moment avant le
+            # solver, pour garder les profils/adapters en grandeurs physiques
+            # positives quand c'est leur representation naturelle.
             arr_signed = _apply_sign_policy(arr_w, bind.sign, bind.scale)
             
-            # contrôle du signe attendu
+            # Controle informatif: apres application de la convention, un
+            # profil consume devrait etre <= 0 et un profil inject >= 0.
             if bind.sign in ("consume", "inject"):
                 total, wrong, frac = _warn_inconsistent_sign(arr_signed, bind.sign)
                 if verbose:
@@ -841,7 +632,7 @@ class Vessel:
     
         return {k: v[1] for k, v in full.items()} if profiles_only else full
     
-    # -------- Connexion des inputs avec le solver, via `prepare_state` --------
+    # -------- Pipeline: application effective des inputs au SolverDAG --------
     def apply_inputs_to_solver(
         self,
         *,
@@ -853,6 +644,11 @@ class Vessel:
     ) -> int:
         """
         Applique les inputs au solver via prepare_state.
+
+        Cette methode initialise l'etat numerique du `SolverDAG` a partir des
+        profils signes construits par `build_solver_inputs()`. Apres cet appel,
+        les bus possedent un `net_w` initial et les inputs du solver portent
+        leurs profils.
 
         Parameters
         ----------
@@ -871,6 +667,13 @@ class Vessel:
         -------
         int
             Longueur N des profils.
+
+        Notes
+        -----
+        Cette methode prepare le solver mais ne lance pas la propagation DAG.
+        Elle reste utile pour un controle detaille ou un debogage entre les
+        etapes. Pour l'usage courant, preferer `Vessel.run()`, qui enchaine
+        preparation, resolution et post-traitement des stockages.
         """
         profiles = self.build_solver_inputs(
             profiles_only=True, verbose=verbose, auto_convert=auto_convert,
@@ -889,7 +692,7 @@ class Vessel:
 
         return N
     
-    # -------- Connexion des signaux avec le solver, signaux adimensionnels --------
+    # -------- Pipeline: signaux adimensionnels -> convertisseurs variables --------
     def attach_converter_eta_profiles(
         self,
         *,
@@ -924,7 +727,8 @@ class Vessel:
                 N = len(b.net_w)
                 break
 
-        # Collecte des signaux dimensionnels ('-')
+        # Seuls les signaux adimensionnels sont candidats pour eta(t). Les
+        # profils avec unite physique restent dans le chemin d'input classique.
         eta_signals: dict[str, FArray] = {}
         for sid, (arr, unit) in self.signals.items():
             if unit == "-":
@@ -964,7 +768,7 @@ class Vessel:
 
         return attached
 
-    # --- Orchestrateur global pour la construction du SolverDAG ---
+    # --- Pipeline court: inputs + rendements variables, sans run_vector ---
     def build_solver(
         self,
         *,
@@ -972,12 +776,82 @@ class Vessel:
         auto_convert_w_profile: bool = False,
         clip_eta_profile: bool = True,
     ) -> None:
+        """
+        Orchestration courte pour preparer le solver interne.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Affiche les informations de cablage.
+        auto_convert_w_profile : bool, optional
+            Active la conversion automatique des profils vers W.
+        clip_eta_profile : bool, optional
+            Borne les profils de rendement eta(t) dans l'intervalle admissible.
+
+        Notes
+        -----
+        Cette methode applique les inputs au solver et attache les profils de
+        rendement variables. Elle ne lance pas `run_vector`.
+        """
         self.apply_inputs_to_solver(
             verbose=verbose,
             auto_convert=auto_convert_w_profile,
             eta_autowire=True,                # <- direct ici
             clip_eta_profile=clip_eta_profile,
         )
+
+    def run(
+        self,
+        *,
+        verbose: bool = False,
+        auto_convert_w_profile: bool = False,
+        clip_eta_profile: bool = True,
+        tally_storages: bool = True,
+    ) -> "Vessel":
+        """
+        Execute le workflow principal du vessel.
+
+        Cette methode est l'API de haut niveau recommandee pour un utilisateur
+        metier. Elle enchaine :
+
+        1. preparation des inputs du solver avec `build_solver()` ;
+        2. resolution du DAG avec `run_vector()` ;
+        3. post-traitement des stockages avec `tally_storages()`.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Affiche les informations de cablage.
+        auto_convert_w_profile : bool, optional
+            Active la conversion automatique des profils vers W lors de la
+            preparation des inputs.
+        clip_eta_profile : bool, optional
+            Borne les profils de rendement eta(t) dans l'intervalle admissible.
+        tally_storages : bool, optional
+            Si True, calcule les resultats de stockage apres resolution.
+
+        Returns
+        -------
+        Vessel
+            L'instance courante, afin de permettre un usage chaine.
+
+        Examples
+        --------
+        >>> vessel = Vessel.from_yaml(yaml_text)
+        >>> vessel.run()
+        >>> df = vessel.results_dataframe()
+        """
+        from cgn_model.energy_solver import run_vector
+
+        self.build_solver(
+            verbose=verbose,
+            auto_convert_w_profile=auto_convert_w_profile,
+            clip_eta_profile=clip_eta_profile,
+        )
+        run_vector(self.solver)
+        if tally_storages:
+            self.tally_storages(require_solver_run=True)
+        return self
 
     # --- Gestion des stockages en sortie du SolverDAG ---
     def tally_storages(
@@ -1006,6 +880,18 @@ class Vessel:
                     "Appelle d'abord Vessel.apply_inputs_to_solver()."
                 )
 
+        if require_solver_run:
+            missing_convs = [
+                conv_id for conv_id, conv in self.solver.converters.items()
+                if getattr(conv, "p_in_w", None) is None or getattr(conv, "p_out_w", None) is None
+            ]
+            if missing_convs:
+                raise RuntimeError(
+                    "tally_storages() : le solver ne semble pas resolu. "
+                    f"Convertisseurs sans resultats: {missing_convs}. "
+                    "Appelle d'abord Vessel.run() ou run_vector(vessel.solver)."
+                )
+
         for scfg in self.storages_cfg:
             bus = self.solver.buses.get(scfg.bus)
             if bus is None:
@@ -1016,7 +902,8 @@ class Vessel:
                     "As-tu appelé apply_inputs_to_solver() (et éventuellement run_vector()) ?"
                 )
 
-            # Compat: nouveau nom vector_energy, fallback ancien vecteur.
+            # Compat YAML: le nom canonique est `vector_energy`, mais les
+            # anciennes configurations peuvent encore fournir `vecteur`.
             vector_name = getattr(scfg, "vector_energy", None)
             if vector_name is None:
                 vector_name = getattr(scfg, "vecteur", None)
@@ -1038,7 +925,9 @@ class Vessel:
                 bus_id=scfg.bus,
                 bus_net_w=bus.net_w,
                 dt=self.dt,
-                vector=vector_name,  # juste mémorisé, pas utilisé par le tally générique
+                # Le nom du vecteur est une metadonnee; les conversions viennent
+                # des parametres PCI/densite transmis juste en dessous.
+                vector=vector_name,
                 vector_params=vector_params_dict,
                 initial_level=initial_level_dict,
             )
@@ -1087,25 +976,6 @@ class Vessel:
         order: list[str] = []
         N: int | None = None
 
-        def _clean_unit(unit: str | None) -> str | None:
-            if unit is None:
-                return None
-            u = unit.strip()
-            if u == "" or u == "-":
-                return "unitless"
-            u = u.replace("/", "_per_")
-            u = u.replace(" ", "")
-            u = u.replace("*", "_")
-            u = u.replace("^", "")
-            u = u.replace("(", "").replace(")", "")
-            return u
-
-        def _col_name(base: str, unit: str | None) -> str:
-            u = _clean_unit(unit)
-            if u is None:
-                return base
-            return f"{base}_{u}"
-
         def _add_col(base: str, arr: FArray, unit: str | None = None) -> str:
             nonlocal N
             a = np.asarray(arr)
@@ -1115,59 +985,13 @@ class Vessel:
                 N = int(a.shape[0])
             elif int(a.shape[0]) != N:
                 raise ValueError(f"Longueurs incoherentes pour '{base}' ({a.shape[0]} vs {N}).")
-            name = _col_name(base, unit)
+            name = results_col_name(base, unit)
             if name not in columns:
                 columns[name] = a  # type: ignore[assignment]
                 order.append(name)
                 if unit is not None:
                     units[name] = unit
             return name
-
-        def _unit_from_storage_col(col: str) -> str | None:
-            if col == "t_s":
-                return "s"
-            if col.endswith("_W"):
-                return "W"
-            if col.endswith("_kWh"):
-                return "kWh"
-            if col.endswith("_J"):
-                return "J"
-            if col.endswith("_kg"):
-                return "kg"
-            if col.endswith("_kg_per_s"):
-                return "kg/s"
-            if col.endswith("_m3"):
-                return "m3"
-            if col.endswith("_m3_per_s"):
-                return "m3/s"
-            if col.endswith("_l"):
-                return "l"
-            if col.endswith("_l_per_s"):
-                return "l/s"
-            return None
-
-        def _strip_storage_suffix(col: str, unit: str | None) -> str:
-            if unit == "s" and col.endswith("_s"):
-                return col[:-2]
-            if unit == "W" and col.endswith("_W"):
-                return col[:-2]
-            if unit == "kWh" and col.endswith("_kWh"):
-                return col[:-4]
-            if unit == "J" and col.endswith("_J"):
-                return col[:-2]
-            if unit == "kg" and col.endswith("_kg"):
-                return col[:-3]
-            if unit == "kg/s" and col.endswith("_kg_per_s"):
-                return col[:-9]
-            if unit == "m3" and col.endswith("_m3"):
-                return col[:-3]
-            if unit == "m3/s" and col.endswith("_m3_per_s"):
-                return col[:-9]
-            if unit == "l" and col.endswith("_l"):
-                return col[:-2]
-            if unit == "l/s" and col.endswith("_l_per_s"):
-                return col[:-8]
-            return col
 
         # --- time
         t = self.t
@@ -1227,30 +1051,36 @@ class Vessel:
                 for col in df.columns:
                     if col == "t_s":
                         continue
-                    unit = _unit_from_storage_col(col)
-                    base = _strip_storage_suffix(col, unit)
+                    unit = unit_from_storage_col(col)
+                    base = strip_storage_unit_suffix(col, unit)
                     c = _add_col(f"storage_{stor_id}_{base}", df[col].to_numpy(), unit)
                     s_cols.append(c)
                 storage_cols_by_id[stor_id] = s_cols
 
-        # Guardrails when ids=None: on veut tout, donc exiger la presence des blocs manquants
+        # Quand aucun filtre n'est donne, l'utilisateur demande un export complet:
+        # on exige donc que les inputs, convertisseurs et stockages configures
+        # aient deja ete calcules.
         if ids is None:
             if t is None:
                 raise RuntimeError("Vecteur temps indisponible. Lancez le solver ou construisez les signaux.")
             if missing_inputs:
                 raise RuntimeError(
-                    "Profiles des inputs solver manquants. Appelez build_solver()/apply_inputs_to_solver()."
+                    "Profiles des inputs solver manquants. Appelez Vessel.run() avant export "
+                    "ou build_solver()/apply_inputs_to_solver() pour un usage avance."
                 )
             if missing_convs:
                 raise RuntimeError(
-                    "Resultats des convertisseurs manquants. Lancez run_vector() avant export."
+                    "Resultats des convertisseurs manquants. Appelez Vessel.run() avant export "
+                    "ou lancez run_vector() manuellement pour un usage avance."
                 )
             if (self.storages_cfg and (self.storages is None or len(self.storages) == 0)):
                 raise RuntimeError(
-                    "Stockages configures mais non calcules. Appelez tally_storages() avant export."
+                    "Stockages configures mais non calcules. Appelez Vessel.run() avant export "
+                    "ou tally_storages() manuellement pour un usage avance."
                 )
 
-        # --- build selector map (ids -> columns)
+        # La selection accepte a la fois les IDs metier historiques et les noms
+        # de colonnes prefixes, afin de garder la compatibilite des notebooks.
         selector_map: dict[str, list[str]] = {}
 
         def _add_selector(key: str, cols: list[str]) -> None:
@@ -1397,63 +1227,49 @@ converters:
     params: { eta: 0.9 }
 """
     
-    # # === Test de base de la création de la classe Vessel ===
+    # === Test de base de la création de la classe Vessel ===
 
     cfg = yaml.safe_load(cfg_txt)
     vessel = Vessel.from_yaml(cfg)
     mapping = vessel.build_solver_inputs(verbose=True)
-    # for k, (bus, arr) in mapping.items():
-    #     print(k, "->", bus, "| len:", len(arr), "| first:", round(float(arr[0]),2), "| max:", round(max(arr),2))
+    for k, (bus, arr) in mapping.items():
+        print(k, "->", bus, "| len:", len(arr), "| first:", round(float(arr[0]),2), "| max:", round(max(arr),2))
 
     
-    # # === Validation de la config en 2 paties, Vessel -> Solveur ===
+    # === Validation de la config en 2 paties, Vessel -> Solveur ===
     
-    # def validation_init_solver(vessel, solver):
-    #     dct_vessel_solver = vars(vessel.solver)
-    #     dct_solver = vars(solver)
-    #     # Les ID des Graphs ne sont pas identiques
-    #     del dct_vessel_solver["dag"]
-    #     del dct_solver["dag"]
-    #     return dct_vessel_solver == dct_solver
+    def validation_init_solver(vessel, solver):
+        dct_vessel_solver = vars(vessel.solver)
+        dct_solver = vars(solver)
+        # Les ID des Graphs ne sont pas identiques
+        del dct_vessel_solver["dag"]
+        del dct_solver["dag"]
+        return dct_vessel_solver == dct_solver
     
-    # solver = SolverDAG.from_yaml(cfg)
+    solver = SolverDAG.from_yaml(cfg)
     
-    # if validation_init_solver(vessel, solver):
-    #     print("\nOK : Les 2 solveurs sont identiques !\n")
-    # else:
-    #     print("\nATTENTION : Les 2 solveurs sont différents !\n")
+    if validation_init_solver(vessel, solver):
+        print("\nOK : Les 2 solveurs sont identiques !\n")
+    else:
+        print("\nATTENTION : Les 2 solveurs sont différents !\n")
     
     
     # === Test de la création des inputs de Vessel vers le Solveur interne ===
     
-    # cfg = yaml.safe_load(cfg_txt)
-    # vessel_1 = Vessel.from_yaml(cfg)
-    # vessel_2 = Vessel.from_yaml(cfg)
+    cfg = yaml.safe_load(cfg_txt)
+    vessel_1 = Vessel.from_yaml(cfg)
+    vessel_2 = Vessel.from_yaml(cfg)
     
-    # # Option 1: juste récupérer les profils prêts
-    # mapping = vessel_1.build_solver_inputs(profiles_only=True, verbose=True)
-    # # puis ailleurs:
-    # from cgn_model.energy_solver import prepare_state
-    # prepare_state(vessel_1.solver, mapping)
+    # Option 1: juste récupérer les profils prêts
+    mapping = vessel_1.build_solver_inputs(profiles_only=True, verbose=True)
+    # puis ailleurs:
+    from cgn_model.energy_solver import prepare_state
+    prepare_state(vessel_1.solver, mapping)
     
-    # # Option 2: tout faire en une ligne
-    # vessel_2.apply_inputs_to_solver(verbose=True)
-    
-    
+    # Option 2: tout faire en une ligne
+    vessel_2.apply_inputs_to_solver(verbose=True)
     
     
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
+    

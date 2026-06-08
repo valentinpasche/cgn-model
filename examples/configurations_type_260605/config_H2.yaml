@@ -1,8 +1,8 @@
-# YAML de configuration, bateau type "Full-Electrique" (batteries)
+# YAML de configuration, bateau type "H2, pile à combustible"
 
 vessel:
-  name: ""
-  vessel_type: "undefined" # full-electrique, avec batteries
+  name: "Bateau type H2"
+  vessel_type: "undefined" # H2, pile
 
 simulation:
   dt: 1.0  # [s]
@@ -45,7 +45,7 @@ inputs:
     sign: "consume"
 
   - id: "navops"
-    bus: "electric"
+    bus: "elec_power"
     source: "hotel_load"
     sign: "consume"
 
@@ -53,21 +53,32 @@ buses:
   - id: "shaft"
     carrier: "Mechanical"
 
-  - id: "electric"
+  - id: "elec_power"
     carrier: "Electrical"
+
+  - id: "h2"
+    carrier: "Hydrogen"
 
 converters:
   - id: "motor"
-    from_bus: "electric"
+    from_bus: "elec_power"
     to_bus:   "shaft"
     kind: "constant_eta"
     params:
       eta: 0.9   # [-]
 
+  - id: "PC"
+    from_bus: "h2"
+    to_bus:   "elec_power"
+    kind: "constant_eta"
+    params:
+      eta: 0.5   # [-]
+
 storages:
-  - id: "battery_pack"
-    bus: "electric"
-    vector_energy: "electrical"
-    initial_level:
-      value: 5000
-      unit: kWh
+  - id: "h2_tank"
+    bus: "h2"
+    vector_energy: "hydrogen"
+    vector_params:
+      pci_basis: "mass"
+      pci_value: 33.3
+      pci_mass_unit: "kWh/kg"

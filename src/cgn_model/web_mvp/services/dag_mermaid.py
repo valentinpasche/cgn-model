@@ -9,12 +9,43 @@ from typing import Any
 
 
 def _sanitize(raw: str) -> str:
+    """
+    Convertit un identifiant YAML en identifiant Mermaid stable.
+
+    Parameters
+    ----------
+    raw : str
+        Identifiant source.
+
+    Returns
+    -------
+    str
+        Identifiant contenant uniquement lettres, chiffres et underscores.
+    """
     cleaned = re.sub(r"[^0-9a-zA-Z_]", "_", raw)
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
     return cleaned or "node"
 
 
 def _render_node(node_id: str, label: str, shape: str) -> str:
+    """
+    Rend une ligne Mermaid pour un noeud type.
+
+    Parameters
+    ----------
+    node_id : str
+        Identifiant Mermaid deja sanitize.
+    label : str
+        Texte affiche dans le noeud.
+    shape : str
+        Type logique (`profile`, `adapter`, `input`, `bus`, `converter`,
+        `storage` ou generique).
+
+    Returns
+    -------
+    str
+        Ligne Mermaid.
+    """
     # Mermaid n'accepte pas toujours les labels vides (""), surtout selon la shape.
     # On force un placeholder minimal pour conserver le noeud sans texte lisible.
     safe_label = label if str(label).strip() else " "

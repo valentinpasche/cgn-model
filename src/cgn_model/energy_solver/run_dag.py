@@ -11,6 +11,12 @@ import numpy as np
 from typing import Mapping
 from cgn_model.energy_solver import SolverDAG
 
+__all__ = [
+    "prepare_state",
+    "run_vector",
+    "attach_eta_profile"
+]
+
 
 def _pos(x: np.ndarray) -> np.ndarray:
     """
@@ -119,7 +125,8 @@ def prepare_state(
     if N is None:
         raise ValueError("Aucun profil fourni à prepare_state().")
 
-    # 2) Réinitialiser l'état des bus
+    # Chaque appel repart d'un etat vierge: les profils d'input sont la seule
+    # source de net_w initiale, et le ledger garde la trace par contribution.
     for b in solver.buses.values():
         b.net_w = np.zeros(N, dtype=float)
         b.ledger.clear()
@@ -129,7 +136,8 @@ def prepare_state(
         c.p_in_w = np.zeros(N, dtype=float)
         c.p_out_w = np.zeros(N, dtype=float)
 
-    # 4) Attacher/appliquer les inputs et logger sur les bus
+    # Les inputs sont deja signes par Vessel: ici on additionne simplement les
+    # puissances [W] sur leur bus cible.
     for input_id, arr in prepared.items():
         s = solver.inputs[input_id]
         s.profile = arr
@@ -153,6 +161,7 @@ def run_vector(solver: SolverDAG) -> None:
     Convention : profil > 0 = injection sur un bus, < 0 = demande.
     - mode "inverse" : couvre les deficits en aval (remonte la chaine).
     - mode "forward" : pousse les surplus amont vers l'aval (borne par le besoin).
+    - Les grandeurs propagees sont des puissances instantanees [W].
 
     Effets
     ------
@@ -166,11 +175,14 @@ def run_vector(solver: SolverDAG) -> None:
             bus_u = solver.buses[u]
             bus_v = solver.buses[v]
 
+            # En inverse, le deficit aval fixe la sortie requise; l'entree est
+            # calculee par le rendement inverse du convertisseur.
             need_v = _neg_mag(bus_v.net_w)              # besoin à v (déficit)
             p_out = need_v                               # on cherche à annuler le déficit
             p_in  = conv.inverse(p_out)
 
-            # applique
+            # Effet bilan: l'amont fournit p_in (retrait, donc -p_in), l'aval
+            # recoit p_out (injection, donc +p_out).
             conv.p_in_w  += p_in
             conv.p_out_w += p_out
             bus_u.net_w  -= p_in
@@ -183,6 +195,8 @@ def run_vector(solver: SolverDAG) -> None:
             bus_v.ledger[f"conv_in:{conv_id}"] += p_out
 
     elif solver.mode == "forward":
+        # TODO: valider le mode forward sur un cas physique de reference avant
+        # de retirer cette protection.
         # Protection calcul non vérifié, à supprimer en temps voulu.
         raise NotImplementedError(f"Mode solver `{solver.mode!r}` non vérifié. Ne pas utiliser pour l'instant.")
         
@@ -213,9 +227,26 @@ def run_vector(solver: SolverDAG) -> None:
 # Fonction utilitaire non utilisée pour l'instant dans le pipline global.
 def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
     """
-    Attache un profil d'efficacité η(t) à un convertisseur 'variable_eta'.
-    - eta_series : array-like 1D, valeurs attendues ~[0,1]
-    - A appeler après avoir construit les inputs (pour connaître N), et avant run_vector().
+    Attache un profil d'efficacite eta(t) a un convertisseur `variable_eta`.
+
+    Parameters
+    ----------
+    solver : SolverDAG
+        Solveur contenant le convertisseur cible.
+    conv_id : str
+        Identifiant du convertisseur a rendement variable.
+    eta_series : array-like
+        Profil 1D adimensionnel, valeurs attendues dans [0, 1].
+
+    Returns
+    -------
+    None
+        Le profil est attache par effet de bord sur le convertisseur.
+
+    Notes
+    -----
+    A appeler apres la construction des inputs, pour connaitre l'horizon
+    temporel N, et avant `run_vector`.
     """
     conv = solver.converters.get(conv_id)
     if conv is None:
@@ -235,9 +266,6 @@ def attach_eta_profile(solver, conv_id: str, eta_series) -> None:
         eta = np.clip(eta, 0.0, 1.0)
     
     conv.eta_profile = eta
-
-
-
 
 
 

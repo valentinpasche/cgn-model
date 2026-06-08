@@ -43,7 +43,7 @@ def _load_docs_markdown() -> str:
     """
     try:
         root = Path(__file__).resolve().parents[4]
-        yaml_guide = (root / "docs" / "yaml_guide.md").read_text(encoding="utf-8")
+        yaml_guide = (root / "docs" / "script_guide.md").read_text(encoding="utf-8")
         # Evite que des annotations de type comme `list[float]` soient lues comme des liens Markdown.
         yaml_guide = re.sub(
             r"\b([A-Za-z_][A-Za-z0-9_]*)\[([^\]\n]+)\](?!\()",
@@ -53,9 +53,10 @@ def _load_docs_markdown() -> str:
         intro = (
             "## Aide rapide templates\n\n"
             "Documentation source:\n"
-            "- `docs/yaml_guide.md`\n"
+            "- `docs/index.md`\n"
+            "- `docs/script_guide.md`\n"
             "- `docs/navigation_guide.md`\n"
-            "- `docs/example_v1.md`\n\n"
+            "- `docs/example_script.md`\n\n"
             "---\n\n"
         )
         return intro + yaml_guide

@@ -43,7 +43,7 @@ def build_app() -> Dash:
                         style={"height": "34px", "width": "auto"},
                     ),
                     html.P(
-                        "MVP realise pour CGN Model - credits: equipe projet + client",
+                        "MVP realise pour `CGN Model` - credits: V. Pasche (HEIA-FR) + R. Baur (CGN)",
                         style={"margin": 0, "fontWeight": 600},
                     ),
                     html.Div(

@@ -10,7 +10,20 @@ from pydantic import BaseModel, StrictStr, ConfigDict, model_validator, Field, f
 
 type VesselType = Literal["DE", "steam", "undefined"]
 
-__all__ = ["VesselType", "VesselCfg", "ProfileCfg", "AdapterCfg", "InputBindCfg"]
+__all__ = [
+    "VesselType",
+    "VesselCfg",
+    "SimulationCfg",
+    "NavParams",
+    "NavSelect",
+    "ProfileCfg",
+    "AdapterCfg",
+    "InputBindCfg",
+    "EnergyVectorParams",
+    "InitialStorageLevel",
+    "StorageCfg",
+    "VesselSectionsCfg",
+]
 
 
 # ---- Adaptateurs multi-sources
@@ -165,8 +178,10 @@ class NavSpeedProfileCfg(ProfileCfgBase):
     @classmethod
     def _normalise_select(cls, v: Any) -> Any:
         """
-        Autorise les trois clés connues {cruise_name, course_no, leg}
-        mais ne garde que celle requise par 'by'. Refuse toute clé inconnue.
+        Normalise les alias francais de `by`, puis garde la cle requise.
+
+        Les valeurs conservees apres validation sont toujours les valeurs
+        canoniques `cruise`, `course` et `leg`. Toute cle inconnue reste refusee.
         """
         if not isinstance(v, dict):
             return v
@@ -176,6 +191,15 @@ class NavSpeedProfileCfg(ProfileCfgBase):
             raise ValueError(f"Clés inconnues dans select: {sorted(unknown)}")
 
         by = v.get("by")
+        if isinstance(by, str):
+            by = by.strip().lower()
+            by = {
+                "croisiere": "cruise",
+                "croisière": "cruise",
+                "etape": "leg",
+                "étape": "leg",
+            }.get(by, by)
+
         if by == "cruise":
             return {"by": "cruise", "cruise_name": v.get("cruise_name")}
         if by == "course":
@@ -238,9 +262,25 @@ class InputBindCfg(BaseModel):
 
 # ---- Storage + Vector specs optionnel ---
 
-from cgn_model.vessel_model.utils import PCI_Massic_Unit, PCI_Volumic_Unit, StorageLevelUnit
+from cgn_model.vessel_model.energy_units import PCI_Massic_Unit, PCI_Volumic_Unit, StorageLevelUnit
 
 class EnergyVectorParams(BaseModel):
+    """
+    Parametres physiques optionnels d'un vecteur energetique stocke.
+
+    Attributes
+    ----------
+    pci_basis : {"mass", "volume"} | None
+        Base de definition du PCI : massique ou volumique.
+    pci_value : float | None
+        Valeur numerique du PCI.
+    pci_mass_unit : PCI_Massic_Unit | None
+        Unite du PCI massique, si `pci_basis="mass"`.
+    pci_volume_unit : PCI_Volumic_Unit | None
+        Unite du PCI volumique, si `pci_basis="volume"`.
+    density_kg_m3 : float | None
+        Densite [kg/m3], necessaire pour certaines conversions masse/volume.
+    """
     model_config = ConfigDict(extra="forbid")
 
     pci_basis: Literal["mass","volume"] | None = None
@@ -290,6 +330,13 @@ class EnergyVectorParams(BaseModel):
 class InitialStorageLevel(BaseModel):
     """
     Niveau initial du stockage (énergie, masse ou volume).
+
+    Attributes
+    ----------
+    value : float
+        Valeur positive ou nulle.
+    unit : StorageLevelUnit
+        Unite de niveau initial (`J`, `kWh`, `kg`, `m3`, `l`, etc.).
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -499,12 +546,6 @@ class VesselSectionsCfg(BaseModel):
             raise ValueError("Vessel sections invalides:\n- " + "\n- ".join(errs))
 
         return self
-
-
-
-
-
-
 
 
 

@@ -10,9 +10,12 @@ from typing import Any
 from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
-from cgn_model.vessel_model.utils import level_to_j, pci_to_j_per_kg, pci_to_j_per_m3
+from cgn_model.vessel_model.energy_units import level_to_j, pci_to_j_per_kg, pci_to_j_per_m3
 
 type FArray = NDArray[np.floating]
+
+__all__ = ["StorageResult"]
+
 
 @dataclass
 class StorageResult:
@@ -90,7 +93,37 @@ class StorageResult:
         initial_level: dict[str, Any] | None = None,
     ) -> "StorageResult":
         """
-        Construit le tally à partir du signal net_w d'un bus et du pas dt.
+        Construit le tally a partir du signal net_w d'un bus et du pas dt.
+
+        Parameters
+        ----------
+        id : str
+            Identifiant du stockage.
+        bus_id : str
+            Identifiant du bus solver associe.
+        bus_net_w : FArray
+            Puissance nette signee du bus [W].
+        dt : float
+            Pas de temps [s].
+        vector : str | None, optional
+            Nom du vecteur energetique, conserve comme metadonnee.
+        vector_params : dict[str, Any] | None, optional
+            Parametres de PCI et densite pour convertir energie en masse ou
+            volume.
+        initial_level : dict[str, Any] | None, optional
+            Niveau initial, exprime en energie, masse ou volume.
+
+        Returns
+        -------
+        StorageResult
+            Series temporelles de puissance, energie cumulee et niveau de
+            stockage derive.
+
+        Notes
+        -----
+        La puissance `bus_net_w` reste signee. Les colonnes positives et
+        negatives sont des decompositions de post-traitement, sans clip du
+        bilan net.
         """
         if dt <= 0:
             raise ValueError("dt doit être > 0")
@@ -98,6 +131,9 @@ class StorageResult:
         p = np.asarray(bus_net_w, dtype=np.float64).reshape(-1)
         N = p.shape[0]
 
+        # Le tally conserve le bilan signe et calcule en parallele les parties
+        # positives/negatives pour les exports et resumes. Aucun ecretage n'est
+        # applique a `p`, afin de garder l'information de bilan.
         t_s      = np.arange(N, dtype=np.float64) * float(dt)
         p_pos_W  = np.clip(p, 0.0, None)
         p_neg_W  = np.clip(-p, 0.0, None)
@@ -126,6 +162,9 @@ class StorageResult:
         pci_j_per_kg: float | None = None
         pci_j_per_m3: float | None = None
 
+        # Branche PCI massique: la puissance [W = J/s] est convertie en debit
+        # massique [kg/s] via le PCI [J/kg]. La densite permet ensuite le debit
+        # volumique.
         if basis == "mass" and pci_value is not None and pci_mass_unit is not None:
             pci_j_per_kg = pci_to_j_per_kg(float(pci_value), str(pci_mass_unit))
             m_dot_kg_per_s = p / pci_j_per_kg
@@ -137,6 +176,9 @@ class StorageResult:
                 v_dot_l_per_s = v_dot_m3_per_s * 1_000.0
                 v_cum_l = v_cum_m3 * 1_000.0
 
+        # Branche PCI volumique: la puissance [J/s] est convertie en debit
+        # volumique [m3/s] via le PCI [J/m3]. La densite permet ensuite le
+        # debit massique.
         elif basis == "volume" and pci_value is not None and pci_volume_unit is not None:
             pci_j_per_m3 = pci_to_j_per_m3(float(pci_value), str(pci_volume_unit))
             v_dot_m3_per_s = p / pci_j_per_m3
@@ -148,6 +190,8 @@ class StorageResult:
                 m_dot_kg_per_s = v_dot_m3_per_s * float(density)
                 m_cum_kg = np.cumsum(m_dot_kg_per_s) * float(dt)
 
+        # Les niveaux initiaux en masse/volume ne sont convertibles que si les
+        # parametres PCI/densite permettent de revenir a une energie [J].
         if isinstance(initial_level, dict):
             raw_value = initial_level.get("value")
             raw_unit = initial_level.get("unit")
@@ -160,6 +204,10 @@ class StorageResult:
                     density_kg_m3=float(density) if density is not None else None,
                 )
 
+        # Le niveau stocke suit le bilan net signe; la convention de signe du
+        # bus determine donc si le stockage augmente ou diminue.
+        # TODO: confirmer la convention metier attendue pour les bus de stockage
+        # (p_W positif = remplissage ou soutirage selon le modele).
         e_stock_J = initial_level_j + e_cum_J
         e_stock_kWh = e_stock_J / 3_600_000.0
         if pci_j_per_kg is not None:
@@ -199,9 +247,19 @@ class StorageResult:
 
     def to_dataframe(self):
         """
-        Retourne un pandas.DataFrame avec les colonnes standardisées :
-          - 't_s', 'p_W', 'p_pos_W', 'p_neg_W', 'e_cum_J', 'e_pos_J', 'e_neg_J'
-        (Import local pour ne pas imposer pandas si non utilisé ailleurs.)
+        Retourne un pandas.DataFrame avec les colonnes standardisees.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Colonnes de base `t_s`, `p_W`, `p_pos_W`, `p_neg_W`, `e_cum_J`,
+            `e_pos_J`, `e_neg_J`, `e_stock_J`, puis colonnes derivees si le
+            vecteur energetique fournit PCI/densite.
+
+        Notes
+        -----
+        Import local de pandas pour ne pas l'imposer aux usages qui ne font que
+        construire les objets de calcul.
         """
         import pandas as pd  # type: ignore
         data: dict[str, FArray] = {
