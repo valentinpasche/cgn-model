@@ -112,3 +112,4 @@ Pour une première prise en main :
 - Pour inspecter ou compléter les horaires : [navigation_guide.md](navigation_guide.md).
 - Pour comprendre un objet du code : [reference_modules_classes.md](reference_modules_classes.md).
 - Pour inspecter directement le solveur : [`examples/solver_dag_mode_260605/`](../examples/solver_dag_mode_260605/).
+- Pour aller plus loin sur les choix d'architecture : [design_principles.md](design_principles.md).
