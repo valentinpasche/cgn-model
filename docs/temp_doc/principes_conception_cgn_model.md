@@ -19,6 +19,8 @@ Le choix a donc été de privilégier un outil modulaire et traçable, plutôt q
 solveur physique généraliste difficile à maintenir. Les composants principaux
 sont explicités dans le code et dans la configuration : profils, adaptateurs,
 entrées du solveur, bus énergétiques, convertisseurs et stockages.
+Ces notions sont également détaillées dans la documentation associée au code,
+afin de rendre les responsabilités de chaque composant identifiables.
 
 ## Principe de modularité
 
@@ -88,14 +90,8 @@ Cette représentation a été choisie pour plusieurs raisons :
 Le graphe est orienté selon le sens physique du flux d’énergie. Le solveur peut
 ensuite utiliser ce graphe dans le sens adapté au calcul.
 
-Deux graphes sont distingués :
-
-- le graphe d’exécution, utilisé pour les calculs ;
-- le graphe de visualisation, enrichi avec les inputs afin de mieux documenter
-  les connexions.
-
-Cette séparation permet d’obtenir un calcul propre tout en conservant un support
-visuel utile pour vérifier le modèle et expliquer la configuration.
+Une représentation visuelle du graphe peut aussi être utilisée comme support de
+contrôle ou d'explication, sans modifier le calcul lui-même.
 
 ## Mode de calcul inverse
 
@@ -155,15 +151,14 @@ df = vessel.results_dataframe()
 
 Les appels plus détaillés, comme `build_solver()`, `tally_storages()` ou
 `run_vector()`, restent disponibles pour l'inspection, le débogage ou les usages
-avancés du solveur, mais ils ne sont plus nécessaires dans le workflow standard.
+avancés du solveur, mais ils ne sont plus nécessaires dans l'utilisation
+standard.
 
-Dans l'organisation actuelle, ce rôle d'orchestration est complété par des
-modules auxiliaires plus ciblés. La préparation des profils d'entrée est isolée
-dans `profiles.py`, les liaisons d'inputs et les conventions de signe dans
-`signals.py`, et les règles de nommage des résultats dans `results_utils.py`.
-Cette séparation permet de garder un point d'entrée unique pour l'utilisateur,
-tout en rendant les traitements techniques plus localisés et plus faciles à
-relire.
+Ce rôle d'orchestration est complété par des modules auxiliaires plus ciblés.
+La préparation des profils d'entrée, les liaisons d'inputs, les conventions de
+signe et le nommage des résultats sont séparés afin de garder un point d'entrée
+unique pour l'utilisateur, tout en conservant des traitements techniques
+localisés et faciles à relire.
 
 ## Profils et adaptateurs
 
@@ -312,8 +307,8 @@ assumées :
 - le DAG ne traite pas naturellement les boucles énergétiques fortes ;
 - les convertisseurs sont principalement statiques ;
 - les profils de vitesse restent macroscopiques ;
-- les coefficients empiriques doivent être documentés avec leur domaine de
-  validité ;
+- les coefficients fournis dans la configuration doivent être accompagnés de
+  leur origine et de leur domaine de validité ;
 - le mode `forward` doit encore être validé ;
 - les stockages actifs nécessitent une stratégie de pilotage ou un solveur plus
   avancé.
@@ -330,19 +325,18 @@ avant d’ajouter des comportements plus complexes.
 | Configuration | YAML | Rend les scénarios lisibles, reproductibles et modifiables sans toucher au code |
 | Cœur de calcul | DAG de bus et convertisseurs | Offre une représentation simple, visuelle et déterministe |
 | Sens des flux | Sens physique dans le YAML | Garde une configuration lisible et indépendante du mode de calcul |
-| Mode principal | Inverse statique | Adapté aux profils de mission imposés et aux estimations énergétiques |
-| Visualisation | Graphe enrichi avec inputs virtuels | Facilite le contrôle de la configuration sans perturber le calcul |
+| Mode de calcul principal | Inverse statique | Adapté aux profils de mission imposés et aux estimations énergétiques |
 | Profils | Séparation profiles / adapters / inputs | Distingue données brutes, transformations et connexion au solveur |
 | Navigation | Structure Croisiere / Course / Etape | Reste proche des horaires CGN et de l’exploitation réelle |
 | Vitesse | Profil MRUA discret | Compromis entre simplicité, cohérence horaire et exploitabilité énergétique |
 | Stockages | Post-traitement des bus | Permet de calculer les bilans sans complexifier le solveur |
-| Optimisation | Extension future en amont du solver | Conserve un cœur stable tout en permettant des stratégies avancées |
+| Optimisation | Extension future en amont du solveur | Conserve un cœur stable tout en permettant des stratégies avancées |
 
 ## Conclusion
 
 Le modèle CGN a été conçu autour d’un principe directeur : fournir un outil
-technique structuré, exploitable et évolutif pour analyser les flux énergétiques
-d’un bateau.
+technique structuré, exploitable et évolutif pour analyser les flux
+macroscopiques dans une chaîne énergétique.
 
 La structure retenue repose sur une configuration YAML, un objet `Vessel`
 orchestrateur, un solveur DAG de bus et convertisseurs, et des modules dédiés aux
