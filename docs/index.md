@@ -1,19 +1,16 @@
 # Documentation CGN-model
 
-Cette page sert de point d'entree pour la documentation statique du modele CGN.
-Le README du depot reste la reference pour l'installation rapide et les commandes
-de lancement. Cette page oriente plutot vers les guides de configuration,
-d'utilisation et de comprehension du modele.
+Cette page est le point d'entrée de la documentation statique du modèle CGN.
+Le `README.md` du dépôt reste destiné à l'installation rapide et aux commandes
+de lancement. Cette documentation explique plutôt comment utiliser, configurer
+et comprendre le modèle. Elle concerne principalement l'utilisation en mode
+script et le fonctionnement interne du modèle ; les interfaces graphiques sont
+traitées à part.
 
-## Vue d'ensemble
-
-CGN-model est un package Python de simulation de chaine energetique pour bateau.
-Le modele s'articule autour de trois blocs :
-
-- `vessel_model` charge une configuration YAML et assemble les profils, adapters,
-  inputs, buses, convertisseurs et stockages.
-- `energy_solver` resout les flux d'energie sur un DAG de bus et convertisseurs.
-- `navigation` construit des profils de vitesse a partir d'horaires CGN embarques.
+CGN-model est un package Python de simulation de chaîne énergétique pour bateau.
+Il permet de décrire un scénario dans un fichier YAML, de générer les profils
+nécessaires, de résoudre les flux d'énergie sur un graphe de bus et de
+convertisseurs, puis d'exporter les résultats sous forme de tableau.
 
 API utilisateur principale :
 
@@ -25,46 +22,93 @@ vessel.run()
 df = vessel.results_dataframe()
 ```
 
-Les appels plus detailles comme `build_solver()`, `run_vector()` ou
-`tally_storages()` restent disponibles pour l'inspection et les usages avances,
-mais ne sont pas necessaires pour l'utilisation courante.
+Les appels plus détaillés comme `build_solver()`, `run_vector()` ou
+`tally_storages()` restent disponibles pour l'inspection et les usages avancés,
+mais ils ne sont pas nécessaires pour l'utilisation courante.
 
-## Guides disponibles
+## Notions À Connaître
 
-- [Guide YAML](yaml_guide.md) : structure complete d'un fichier de configuration.
-- [Guide navigation](navigation_guide.md) : donnees CGN, selection de croisiere,
-  course ou etape, et generation de profils `nav_speed`.
-- [Exemple mode *script*](example_script.md) : exemple complet depuis un YAML jusqu'au CSV de
-  resultats.
+Les termes suivants reviennent dans les guides. La référence complète est
+disponible dans [Référence des modules, classes et notions principales](reference_modules_classes.md).
+
+| Terme | Définition courte |
+| --- | --- |
+| `Vessel` | Objet principal qui orchestre la lecture YAML, les profils, le solveur et les résultats. |
+| Profil | Signal temporel brut : constante, série, fichier CSV ou profil de navigation. |
+| Adapter | Transformation d'un signal en un autre signal, par exemple vitesse vers puissance. |
+| Input | Connexion d'un signal à un bus du solveur avec une convention de signe. |
+| Bus | Nœud de bilan de puissance dans le solveur énergétique. |
+| Converter | Convertisseur entre deux bus, avec un rendement constant ou variable. |
+| DAG | Graphe orienté acyclique représentant la chaîne énergétique. |
+| Storage | Post-traitement d'un bus pour calculer énergie cumulée, niveau, masse ou volume. |
+
+## Parcours Conseillé
+
+Pour une première prise en main :
+
+1. Lire [Exemple d'utilisation en mode script](example_script.md) pour voir un
+   calcul complet et directement exécutable.
+2. Utiliser [Guide d'utilisation du modèle en mode script](script_guide.md) pour
+   comprendre et modifier la configuration YAML.
+3. Lire [Structure et déroulement du calcul](model_workflow.md) pour comprendre
+   ce qui se passe entre `from_yaml()`, `run()` et `results_dataframe()`.
+4. Consulter [Guide du module navigation](navigation_guide.md) si le scénario
+   utilise un profil `kind: nav_speed` ou des horaires CGN.
+5. Utiliser [Référence des modules, classes et notions principales](reference_modules_classes.md)
+   pour retrouver rapidement le rôle d'un objet ou d'un module.
+
+## Guides Disponibles
+
+### Utilisation
+
+- [Exemple d'utilisation en mode script](example_script.md) : exemple complet
+  depuis un YAML jusqu'au CSV de résultats.
+- [Guide d'utilisation du modèle en mode script](script_guide.md) : référence
+  des sections YAML et fonctionnement du mode script.
+
+### Compréhension Du Modèle
+
+- [Structure et déroulement du calcul](model_workflow.md) : workflow interne,
+  responsabilités des composants, états intermédiaires et limites actuelles.
 - [Forward vs inverse](forward_vs_inverse.md) : explication des modes de
-  resolution avec exemples numeriques.
+  résolution du solveur avec exemples numériques.
+- [Référence des modules, classes et notions principales](reference_modules_classes.md) :
+  glossaire transversal et cartographie simplifiée du code.
 
-## Parcours conseille
+### Navigation
 
-Pour une premiere prise en main :
+- [Guide du module navigation](navigation_guide.md) : données horaires CGN,
+  structure des CSV, génération des profils de vitesse et paramètre
+  `allow_delay`.
 
-1. Lire le [Guide YAML](yaml_guide.md) pour comprendre la structure d'un
-   scenario.
-2. Parcourir l'[exemple en mode script](example_script.md) pour voir un cas complet.
-3. Lire le [Guide navigation](navigation_guide.md) si le scenario utilise un
-   profil `nav_speed`.
-4. Consulter la note [forward vs inverse](forward_vs_inverse.md) si
-   le fonctionnement du solveur DAG doit etre explique plus en detail.
+## Exemples De Référence
 
-## Exemples de reference
+- [`examples/script_mode_260605/`](../examples/script_mode_260605/) : exemple
+  principal en mode script avec `Vessel.run()` et workflow détaillé.
+- [`examples/configurations_type_260605/`](../examples/configurations_type_260605/) :
+  configurations types pour différentes architectures énergétiques.
+- [`examples/solver_dag_mode_260605/`](../examples/solver_dag_mode_260605/) :
+  exemple autonome utilisant uniquement `SolverDAG`, `prepare_state()` et
+  `run_vector()`.
 
-- `examples/script_mode_260605/` : exemples minimaux documentes.
-- `examples/configurations_type_260106/` : configurations types.
-- `examples/demo_solver_dag_251128/` : exemple centre sur le solveur DAG.
-- `examples/cgn_copil_251212/` : exemple de configuration et resultats COPIL.
+## Conventions Importantes
 
-## Conventions importantes
-
-- Les configurations sont decrites en YAML.
-- Le pas de temps `simulation.dt` est exprime en secondes.
-- Les profils `nav_speed` utilisent les unites SI : vitesse en `m/s`,
-  acceleration et deceleration en `m/s^2`.
-- Le mode solver recommande dans les YAML documentes est `inverse`.
+- Les scénarios sont décrits dans des fichiers YAML.
+- Le pas de temps `simulation.dt` est exprimé en secondes.
+- Les bus du solveur travaillent actuellement en puissance instantanée `W`.
+- Les profils `nav_speed` utilisent les unités SI : vitesse en `m/s`,
+  accélération et décélération en `m/s²`.
+- Le mode recommandé du solveur est `inverse`.
 - Les bus et convertisseurs du DAG doivent suivre le sens physique du flux
-  d'energie avec `from_bus -> to_bus`.
-- Les inputs utilisent une convention de signe : `consume`, `inject` ou `as_is`.
+  d'énergie avec `from_bus -> to_bus`.
+- Les inputs utilisent une convention de signe : `consume`, `inject` ou
+  `as_is`.
+
+## À Lire Ensuite Selon Le Besoin
+
+- Pour modifier un YAML : [script_guide.md](script_guide.md).
+- Pour comprendre les résultats et les colonnes : [example_script.md](example_script.md)
+  puis [model_workflow.md](model_workflow.md).
+- Pour inspecter ou compléter les horaires : [navigation_guide.md](navigation_guide.md).
+- Pour comprendre un objet du code : [reference_modules_classes.md](reference_modules_classes.md).
+- Pour inspecter directement le solveur : [`examples/solver_dag_mode_260605/`](../examples/solver_dag_mode_260605/).
