@@ -1,66 +1,127 @@
-# CGN - Modele de simulation chaine energetique
+# CGN-model
+
+CGN-model est un package Python de simulation de chaîne énergétique pour bateau.
+Il permet de décrire un scénario en YAML, de calculer les flux d'énergie sur un
+graphe de bus et de convertisseurs, puis d'exporter les résultats sous forme de
+tableau.
+
+La documentation principale est disponible ici :
+
+- [Documentation CGN-model](docs/index.md)
+- [Exemple d'utilisation en mode script](docs/example_script.md)
+- [Guide d'utilisation du modèle en mode script](docs/script_guide.md)
+- [Guide du module navigation](docs/navigation_guide.md)
 
 ## Installation
 
-Le projet n'est pas publie sur PyPI. Pour une installation "standard", utilisez un ZIP de release/tag,
-créez l'environnement Conda, puis installez le package localement.
+Le projet n'est pas publié sur PyPI. L'installation se fait depuis un clone du
+dépôt ou depuis un ZIP de release/tag.
 
-### Installation standard (release ZIP)
-
-1) Telecharger une release/tag (ZIP) et dezipper.
-2) Ouvrir un terminal dans le dossier du projet.
-3) Creer l'environnement, puis installer le package.
+### Installation standard
 
 ```bash
 conda env create -f environment.yml
 conda activate cgnmodel
 pip install .
+```
 
+Vérification :
+
+```bash
 python -c "import cgn_model; print('OK:', cgn_model.__name__, 'version:', getattr(cgn_model, '__version__', '?'))"
 ```
 
-### Installation developpement (meme environment.yml)
+### Installation en développement
 
-Deux options equivalentes :
-- **Cloner le repo** (recommande pour contribuer)
-- **Utiliser un ZIP de release** si vous voulez modifier localement une version figée
-
-Dans les deux cas :
+Utiliser le mode éditable si le code doit être modifié localement :
 
 ```bash
 conda env create -f environment.yml
 conda activate cgnmodel
 pip install -e .
-
-python -c "import cgn_model; print('OK:', cgn_model.__name__, 'version:', getattr(cgn_model, '__version__', '?'))"
 ```
 
-## Quickstart
+## Utilisation En Mode Script
 
-- Documentation principale : voir [docs/index.md](docs/index.md)
-- Guide YAML : voir [docs/yaml_guide.md](docs/yaml_guide.md)
-- Exemple complet mode *script* : voir [docs/example_script.md](docs/example_script.md)
-- Navigation (nav_speed) : voir [docs/navigation_guide.md](docs/navigation_guide.md)
+L'API principale est :
 
-## Interfaces
+```python
+from cgn_model import Vessel
 
-Apres installation, les commandes suivantes sont disponibles :
+vessel = Vessel.from_yaml(yaml_text)
+vessel.run()
+df = vessel.results_dataframe()
+```
+
+Exemple complet :
 
 ```bash
-cgnmodel-mvp
-cgnmodel-gui
+python examples/script_mode_260605/run.py
 ```
 
-Sous Windows, `Lancer_CGN_GUI.bat` permet aussi de lancer l'interface graphique
-si l'environnement Conda du projet est disponible.
+## Interfaces Graphiques
 
-## Utilisation (Spyder)
+Avant de lancer une interface, activer l'environnement Conda du projet :
 
-Lancer Spyder depuis l'environnement **cgnmodel** :
+```bash
+conda activate cgnmodel
+```
+
+Commandes disponibles après installation :
+
+```bash
+cgnmodel-gui
+cgnmodel-mvp
+```
+
+`cgnmodel-gui` lance l'interface principale actuelle. `cgnmodel-mvp` correspond à
+une interface plus ancienne/conservée comme prototype.
+
+### Lancement Windows Par Fichier `.bat`
+
+Sous Windows, [Lancer_CGN_GUI.bat](Lancer_CGN_GUI.bat) peut lancer l'interface
+graphique principale.
+
+Avant de l'utiliser, vérifier le chemin de Conda dans le fichier :
+
+```bat
+%UserProfile%\miniconda\condabin\conda.bat
+```
+
+Selon l'installation, il peut être nécessaire de remplacer `miniconda` par
+`Miniconda3`, `anaconda3`, ou par un chemin explicite comme :
+
+```bat
+C:\Users\<Utilisateur>\miniconda3\condabin\conda.bat
+```
+
+Dans certains environnements d'entreprise, l'exécution des fichiers `.bat` peut
+être bloquée. Dans ce cas, utiliser directement les commandes terminal ci-dessus.
+
+## Utilisation Avec Spyder
+
+Lancer Spyder depuis l'environnement `cgnmodel` :
 
 ```bash
 conda activate cgnmodel
 spyder
 ```
 
-Notes de developpement : voir `dev/notes_objectifs.md`.
+Sous Windows, Spyder peut aussi être lancé directement depuis l'exécutable créé
+dans l'environnement Conda. Exemple à adapter selon l'installation :
+
+```text
+C:\Users\<Utilisateur>\miniconda\envs\cgnmodel\Scripts\spyder.exe
+```
+
+Cet exécutable utilise directement l'interpréteur Python de l'environnement
+`cgnmodel`.
+
+## Exemples
+
+- [`examples/script_mode_260605/`](examples/script_mode_260605/) : exemple
+  principal en mode script.
+- [`examples/configurations_type_260605/`](examples/configurations_type_260605/) :
+  configurations types.
+- [`examples/solver_dag_mode_260605/`](examples/solver_dag_mode_260605/) :
+  exemple autonome du solveur `SolverDAG`.
