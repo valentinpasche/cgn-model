@@ -77,6 +77,36 @@ cgnmodel-mvp
 `cgnmodel-gui` lance l'interface principale actuelle. `cgnmodel-mvp` correspond à
 une interface plus ancienne/conservée comme prototype.
 
+### Bases De Données Des Interfaces
+
+Les interfaces graphiques utilisent des bases SQLite locales pour enregistrer
+les configurations et les composants créés depuis l'UI.
+
+Seuls les fichiers templates sont versionnés dans le dépôt GitHub :
+
+- `src/cgn_model/web_ui_v2/data/ui_v2_template.db`
+- `src/cgn_model/web_mvp/data/mvp_template.db`
+
+Les bases utilisées à l'exécution ne sont pas versionnées. Elles restent propres
+à chaque installation locale et peuvent donc être gérées indépendamment :
+
+- `src/cgn_model/web_ui_v2/data/ui_v2.db`
+- `src/cgn_model/web_mvp/data/mvp.db`
+
+Avant la première utilisation d'une interface, créer la base correspondante en
+copiant le template puis en supprimant le suffixe `_template` dans le nom du
+fichier. Par exemple :
+
+```text
+ui_v2_template.db -> ui_v2.db
+mvp_template.db   -> mvp.db
+```
+
+Cette logique permet aussi d'archiver localement une base de données : il suffit
+de renommer le fichier `.db` utilisé, puis de recréer une base propre depuis le
+template. L'interface utilise toujours le fichier portant le nom attendu
+(`ui_v2.db` ou `mvp.db`).
+
 ### Lancement Windows Par Fichier `.bat`
 
 Sous Windows, [Lancer_CGN_GUI.bat](Lancer_CGN_GUI.bat) peut lancer l'interface
