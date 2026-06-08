@@ -707,8 +707,27 @@ def _build_result_figure(
 def register_callbacks(app):
     def _next_rev(rev: int | None) -> int:
         return int(rev or 0) + 1
-    
-    si_hint = " Normalisation SI appliquée (Quantity): NavParams, PCI, niveaux initiaux."
+
+    def _si_hint_for_model(model_key: str | None) -> str:
+        if model_key == "profile.nav_speed":
+            return " Normalisation SI appliquée (Quantity): NavParams."
+        if model_key == "storage.fuel":
+            return " Normalisation SI appliquée (Quantity): PCI, niveau initial."
+        if model_key == "storage.generic":
+            return " Normalisation SI appliquée (Quantity): niveau initial."
+        return ""
+
+    def _si_hint_for_pending(pending: dict[str, Any] | None) -> str:
+        if not isinstance(pending, dict):
+            return ""
+        ctype = str(pending.get("component_type", ""))
+        kind = str(pending.get("kind", ""))
+        if ctype != "storage":
+            return _si_hint_for_model(f"{ctype}.{kind}")
+        payload = pending.get("payload", {})
+        comp = payload.get("component", {}) if isinstance(payload, dict) else {}
+        vector_kind = str(comp.get("vector_kind", "electrical")) if isinstance(comp, dict) else "electrical"
+        return _si_hint_for_model("storage.fuel" if vector_kind == "fuel" else "storage.generic")
 
     @app.callback(
         Output("v2db-rev", "data"),
@@ -1311,7 +1330,7 @@ def register_callbacks(app):
                 return "Erreur validation: nom requis."
             if get_template_by_name(name) is not None:
                 return f"Attention: le nom '{name}' existe deja."
-            return f"Validation OK.{si_hint}"
+            return f"Validation OK.{_si_hint_for_model(model_key)}"
         except ValidationError as exc:
             return f"Erreur validation: {exc.errors()}"
         except Exception as exc:  # noqa: BLE001
@@ -1341,6 +1360,7 @@ def register_callbacks(app):
             ctype, kind, payload = payload_from_data(model_key, raw)
             exists = get_template_by_name(name) is not None
             pending = {"name": name, "component_type": ctype, "kind": kind, "payload": payload}
+            si_hint = _si_hint_for_model(model_key)
             if exists:
                 return f"Le nom '{name}' existe deja. Confirmation requise.{si_hint}", pending, True, no_update
             upsert_template(name=name, family="General", component_type=ctype, kind=kind, payload=payload)
@@ -1370,6 +1390,7 @@ def register_callbacks(app):
             kind=str(pending.get("kind", "")),
             payload=pending.get("payload", {}),
         )
+        si_hint = _si_hint_for_pending(pending)
         return f"Composant DB mis a jour: {str(pending.get('name', ''))}.{si_hint}", {}, False, _next_rev(rev)
 
     @app.callback(

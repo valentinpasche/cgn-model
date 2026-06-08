@@ -547,6 +547,13 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
 
     p = c.get("params", {}) if isinstance(c.get("params"), dict) else {}
 
+    def _ui_quantity_unit(unit: Any) -> Any:
+        if unit == "J/m3":
+            return "J/m^3"
+        if unit == "m3":
+            return "m^3"
+        return unit
+
     if key == "profile.constant":
         return key, {
             "id": c.get("id", ""),
@@ -682,14 +689,14 @@ def seed_from_template(component_type: str, kind: str, payload: dict[str, Any]) 
                 if pci_value is not None and unit:
                     pci_mass = {"value": pci_value, "unit": unit}
             elif basis == "volume":
-                unit = vp.get("pci_volume_unit")
+                unit = _ui_quantity_unit(vp.get("pci_volume_unit"))
                 if pci_value is not None and unit:
                     pci_volume = {"value": pci_value, "unit": unit}
 
         il = c.get("initial_level")
         has_initial_level = isinstance(il, dict) and il.get("value") is not None and il.get("unit") is not None
         value = il.get("value") if has_initial_level else None
-        unit = il.get("unit") if has_initial_level else None
+        unit = _ui_quantity_unit(il.get("unit")) if has_initial_level else None
 
         if key == "storage.fuel":
             return key, {
