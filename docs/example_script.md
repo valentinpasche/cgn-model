@@ -1,4 +1,4 @@
-# Exemple d'utilisation en mode *script* : du YAML aux resultats
+# Exemple d'utilisation en mode script : du YAML aux resultats
 
 Ce document explique comment passer d'un YAML a un fichier de resultats.
 L'objectif est de pouvoir recreer un script similaire a `examples/script_mode_260605/run.py`.

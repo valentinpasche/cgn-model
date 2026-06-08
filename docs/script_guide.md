@@ -1,4 +1,4 @@
-# Guide d’utilisation du modèle en mode *script*
+# Guide d’utilisation du modèle en mode script
 
 Ce document explique comment utiliser le modèle CGN en mode script, sans passer
 par l’interface graphique. La configuration YAML constitue le point d’entrée
