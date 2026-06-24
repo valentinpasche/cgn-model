@@ -8,43 +8,34 @@ channels:
 
 dependencies:
   # --- Python runtime ---
-  - python>=3.13
+  - python=3.13.13
 
   # --- Core data stack ---
-  - pyyaml
-  - pydantic
-  - numpy
-  - matplotlib
-  - pandas
-  - pint # gestion des unités (optionnel)
-  # - pyarrow
+  - pyyaml=6.0.3
+  - pydantic=2.12.5
+  - numpy=2.4.3
+  - matplotlib=3.10.8
+  - pandas=3.0.2
 
   # --- Graph algorithms ---
-  - networkx
+  - networkx=3.6.1
 
   # --- Web MVP ---
-  - dash
-  - plotly # dépendence de dash
-  - dash-extensions
-  - dash-pydantic-form
+  - dash=3.4.0
+  - plotly=6.6.0
+  - dash-extensions=2.0.5
+  - dash-pydantic-form=0.18.3
+  - dash-pydantic-utils=0.18.3
+  - dash-mantine-components=2.6.1
 
-  # # --- Dev & docs (optional but recommended) ---
-  - pytest
-  - ruff
-  - black
-  
-  # - mkdocs
-  # - mkdocs-material
-  # - mkdocstrings
-  # - mkdocstrings-python
+ # --- Dev & tests ---
+  - pytest=9.0.3
+  - ruff=0.15.11
+  - black=26.3.1
 
-  # --- IDE ---
+  # --- IDE optionnel ---
   - spyder
-  - spyder-kernels
 
   # --- Packaging ---
   - pip
   
-  # --- Instalation projet cgn_model---
-  # - pip install . # mode normal
-  # - pip install -e . # mode éditable

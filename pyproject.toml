@@ -7,10 +7,24 @@ name = "cgn-model"
 version = "1.2"
 description = "Energy DAG solver - Energy study CGN"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 
-# Dépendances gérées par conda : on laisse vide ici
-dependencies = []
+# Versions de référence installées par Conda. L'installation recommandée du
+# projet utilise "python -m pip install --no-deps .".
+dependencies = [
+    "PyYAML==6.0.3",
+    "pydantic==2.12.5",
+    "numpy==2.4.3",
+    "matplotlib==3.10.8",
+    "pandas==3.0.2",
+    "networkx==3.6.1",
+    "dash==3.4.0",
+    "plotly==6.6.0",
+    "dash-extensions==2.0.5",
+    "dash-pydantic-form==0.18.3",
+    "dash-pydantic-utils==0.18.3",
+    "dash-mantine-components==2.6.1",
+]
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -22,6 +36,8 @@ exclude = ["tests*", "docs*", "examples*", "build*", "dist*"]
 
 [tool.setuptools.package-data]
 "cgn_model.navigation" = ["data/cgn_croisieres/*.csv"]
+"cgn_model.web_mvp" = ["data/*_template.db"]
+"cgn_model.web_ui_v2" = ["data/*_template.db"]
 
 [project.urls]
 Repository = "https://github.com/valentinpasche/cgn-model"
