@@ -4,9 +4,11 @@ Page d'execution simulation (YAML en lecture seule).
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pandas as pd
 import yaml
-from dash import Input, Output, State, callback, dash_table, dcc, html, register_page
+from dash import Input, Output, State, callback, dash_table, dcc, html, no_update, register_page
 from dash_extensions import Mermaid
 import plotly.express as px
 import plotly.graph_objects as go
@@ -157,6 +159,8 @@ layout = html.Div(
         dcc.Interval(id="sim-onload-refresh", interval=200, n_intervals=0, max_intervals=1),
         dcc.Store(id="sim-yaml-store", data=""),
         dcc.Store(id="sim-mermaid-store", data="flowchart LR\n  a[no_data]"),
+        dcc.Store(id="sim-df-store", data={}),
+        dcc.Download(id="sim-csv-download"),
         html.Div(
             [
                 html.Label("Configuration a simuler"),
@@ -179,6 +183,7 @@ layout = html.Div(
         html.Div(id="sim-config-view"),
         html.Br(),
         html.Button("Lancer simulation", id="btn-run-sim", n_clicks=0),
+        html.Button("Exporter CSV", id="sim-export-csv", n_clicks=0, style={"marginLeft": "8px"}),
         html.Div(id="sim-status", style={"marginTop": "10px"}),
         html.Div(
             [
@@ -277,6 +282,7 @@ def toggle_yaml_view(mode: str, yaml_text: str, mermaid_chart: str):
     Output("sim-graph", "figure"),
     Output("sim-table", "data"),
     Output("sim-table", "columns"),
+    Output("sim-df-store", "data"),
     Input("btn-run-sim", "n_clicks"),
     State("sim-yaml-store", "data"),
     State("sim-select", "value"),
@@ -285,7 +291,7 @@ def toggle_yaml_view(mode: str, yaml_text: str, mermaid_chart: str):
 def run_simulation(_: int, yaml_text: str, selected_id: int | None):
     if selected_id is None:
         empty_fig = px.scatter(title="Simulation en attente")
-        return "Selectionne une configuration avant de lancer.", empty_fig, [], []
+        return "Selectionne une configuration avant de lancer.", empty_fig, [], [], {}
 
     try:
         cfg_name = "inconnue"
@@ -317,7 +323,28 @@ def run_simulation(_: int, yaml_text: str, selected_id: int | None):
             f"Simulation OK: {out.n_rows} lignes, {len(out.columns)} colonnes, "
             f"{len(profile_cols)} profil(s) affiche(s)."
         )
-        return status, fig, data, cols
+        df_store = {"columns": list(df.columns), "rows": df.where(pd.notna(df), None).to_dict("records")}
+        return status, fig, data, cols, df_store
     except Exception as exc:  # noqa: BLE001
         empty_fig = px.scatter(title="Simulation en echec")
-        return f"Erreur: {exc}", empty_fig, [], []
+        return f"Erreur: {exc}", empty_fig, [], [], {}
+
+@callback(
+    Output("sim-csv-download", "data"),
+    Output("sim-status", "children", allow_duplicate=True),
+    Input("sim-export-csv", "n_clicks"),
+    State("sim-df-store", "data"),
+    prevent_initial_call=True,
+)
+def export_results_csv(_: int, df_store: dict | None):
+    if not isinstance(df_store, dict) or not df_store:
+        return no_update, "Export CSV refuse: aucun resultat de simulation."
+    rows = df_store.get("rows", []) or []
+    columns = [str(c) for c in (df_store.get("columns", []) or [])]
+    if not rows or not columns:
+        return no_update, "Export CSV refuse: tableau resultat vide."
+    df = pd.DataFrame(rows, columns=columns)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"simulation_results_{stamp}.csv"
+    return dcc.send_data_frame(df.to_csv, filename, index=False), f"Export CSV OK: {filename}"
+
