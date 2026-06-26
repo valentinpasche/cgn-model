@@ -147,6 +147,10 @@ Cette méthode utilise les dépendances déclarées dans `pyproject.toml`. Elle 
 référence du projet. Le fonctionnement validé correspond à l'environnement Conda
 défini dans `environment.yml`.
 
+Cette commande suppose que l'environnement Python actif contient déjà `python` et
+`pip`. Avec la procédure Conda recommandée, ces outils sont installés par
+`environment.yml`.
+
 ### En cas de problème d'installation
 
 Si une erreur du type `ModuleNotFoundError` apparaît juste après la création de
