@@ -7,7 +7,7 @@ Expose les sous-modules energy_solver, vessel_model et navigation, ainsi que le
 point d'entree metier principal `Vessel`.
 """
 
-__version__ = "1.2"
+__version__ = "1.2.1"
 
 __all__ = ["Vessel", "__version__"]
 
