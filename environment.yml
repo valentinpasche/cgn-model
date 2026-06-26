@@ -1,8 +1,15 @@
-# environment.yml (standard + dev)
+# Environnement de référence CGN-model.
+#
+# Cet environnement est destiné au développement, aux tests et à l'utilisation
+# recommandée du projet. Les dépendances métier sont figées sur les versions
+# validées. L'installation du package local se fait ensuite avec :
+#
+#   python -m pip install --no-deps .
+#
 name: cgnmodel
 
 channels:
-  # "nodefaults" is similar to "-c conda-forge --override-channels" but for yml
+  # Equivalent YAML de "-c conda-forge --override-channels".
   - conda-forge
   - nodefaults
 
@@ -20,7 +27,7 @@ dependencies:
   # --- Graph algorithms ---
   - networkx=3.6.1
 
-  # --- Web MVP ---
+  # --- Web interfaces ---
   - dash=3.4.0
   - plotly=6.6.0
   - dash-extensions=2.0.5
@@ -28,7 +35,7 @@ dependencies:
   - dash-pydantic-utils=0.18.3
   - dash-mantine-components=2.6.1
 
- # --- Dev & tests ---
+  # --- Dev & tests ---
   - pytest=9.0.3
   - ruff=0.15.11
   - black=26.3.1
@@ -37,5 +44,4 @@ dependencies:
   - spyder
 
   # --- Packaging ---
-  - pip
-  
+  - pip=26.1.1

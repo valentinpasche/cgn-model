@@ -9,21 +9,35 @@ description = "Energy DAG solver - Energy study CGN"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 
-# Versions de référence installées par Conda. L'installation recommandée du
-# projet utilise "python -m pip install --no-deps .".
+# L'environnement de référence reste environment.yml.
+# L'installation recommandée du projet utilise :
+#
+#   python -m pip install --no-deps .
+#
+# Les bornes ci-dessous permettent toutefois une installation directe avec
+# "python -m pip install ." ou "python -m pip install -e ." lorsque Conda n'est
+# pas disponible. Les planchers correspondent aux versions validées dans
+# environment.yml ; les plafonds évitent les ruptures majeures probables.
 dependencies = [
-    "PyYAML==6.0.3",
-    "pydantic==2.12.5",
-    "numpy==2.4.3",
-    "matplotlib==3.10.8",
-    "pandas==3.0.2",
-    "networkx==3.6.1",
-    "dash==3.4.0",
-    "plotly==6.6.0",
-    "dash-extensions==2.0.5",
-    "dash-pydantic-form==0.18.3",
-    "dash-pydantic-utils==0.18.3",
-    "dash-mantine-components==2.6.1",
+    "PyYAML>=6.0.3,<7",
+    "pydantic>=2.12.5,<3",
+    "numpy>=2.4.3,<3",
+    "matplotlib>=3.10.8,<4",
+    "pandas>=3.0.2,<4",
+    "networkx>=3.6.1,<4",
+    "dash>=3.4.0,<4",
+    "plotly>=6.6.0,<7",
+    "dash-extensions>=2.0.5,<3",
+    "dash-pydantic-form>=0.18.3,<0.19",
+    "dash-pydantic-utils>=0.18.3,<0.19",
+    "dash-mantine-components>=2.6.1,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3,<10",
+    "ruff>=0.15.11,<0.16",
+    "black>=26.3.1,<27",
 ]
 
 [tool.setuptools]
