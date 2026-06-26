@@ -50,7 +50,7 @@ exclude = ["tests*", "docs*", "examples*", "build*", "dist*"]
 
 [tool.setuptools.package-data]
 "cgn_model.navigation" = ["data/cgn_croisieres/*.csv"]
-"cgn_model.web_mvp" = ["data/*_template.db"]
+"cgn_model.web_mvp" = ["assets/*.svg", "data/*.yaml", "data/*_template.db"]
 "cgn_model.web_ui_v2" = ["data/*_template.db"]
 
 [project.urls]

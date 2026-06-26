@@ -294,3 +294,13 @@ Le nom `<name>` devient ensuite utilisable dans le YAML avec :
 ```yaml
 source: "cgn_croisieres/<name>"
 ```
+
+Cette procédure correspond directement à une installation en mode éditable, où
+le code source du projet est utilisé comme emplacement actif. Dans une
+installation standard du package, un nouveau CSV doit aussi être inclus dans les
+données du package via `pyproject.toml`, puis le projet doit être réinstallé.
+
+Le profil YAML `kind: nav_speed` ne reconnaît actuellement que les sources de la
+forme `cgn_croisieres/<name>`. Pour lire ponctuellement un fichier CSV hors de ce
+dossier, utiliser directement `Croisiere.from_csv("mon_fichier.csv")` dans un
+script Python.
