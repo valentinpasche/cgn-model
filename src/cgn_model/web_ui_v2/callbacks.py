@@ -1125,17 +1125,6 @@ def register_callbacks(app):
         return dcc.send_data_frame(export_df.to_csv, filename, index=False), f"Export CSV OK: {filename}"
 
     @app.callback(
-        Output("v2c-json-modal", "opened"),
-        Output("v2c-json-content", "children"),
-        Input("v2c-show-json", "n_clicks"),
-        State("v2c-json-store", "data"),
-        prevent_initial_call=True,
-    )
-    def show_json(_: int, bundle: dict[str, Any] | None):
-        text = json.dumps(bundle or {}, ensure_ascii=False, indent=2, sort_keys=True)
-        return True, text
-
-    @app.callback(
         Output("v2c-yaml-modal", "opened"),
         Output("v2c-yaml-content", "children"),
         Input("v2c-show-yaml", "n_clicks"),
@@ -1145,14 +1134,6 @@ def register_callbacks(app):
     def show_yaml(_: int, compiled: dict[str, Any] | None):
         text = yaml.safe_dump(compiled or {}, allow_unicode=True, sort_keys=False)
         return True, text
-
-    @app.callback(
-        Output("v2c-json-modal", "opened", allow_duplicate=True),
-        Input("v2c-json-close", "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def close_json_modal(_: int):
-        return False
 
     @app.callback(
         Output("v2c-yaml-modal", "opened", allow_duplicate=True),

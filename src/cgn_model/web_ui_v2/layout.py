@@ -138,19 +138,6 @@ def build_layout():
                     ],
                 ),
                 dmc.Modal(
-                    id="v2c-json-modal",
-                    title="JSON schema valide",
-                    opened=False,
-                    size="xl",
-                    children=[
-                        html.Pre(id="v2c-json-content", style={"whiteSpace": "pre-wrap", "fontSize": "0.88rem"}),
-                        html.Div(
-                            [html.Button("Fermer", id="v2c-json-close", n_clicks=0)],
-                            style={"marginTop": "10px"},
-                        ),
-                    ],
-                ),
-                dmc.Modal(
                     id="v2c-yaml-modal",
                     title="YAML compilé",
                     opened=False,
@@ -233,8 +220,7 @@ def build_layout():
                                     [
                                         html.Div(
                                             [
-                                                html.Button("JSON", id="v2c-show-json", n_clicks=0),
-                                                html.Button("Compiler", id="v2c-compile", n_clicks=0, style={"marginLeft": "8px"}),
+                                                html.Button("Compiler", id="v2c-compile", n_clicks=0),
                                                 html.Button("YAML", id="v2c-show-yaml", n_clicks=0, style={"marginLeft": "8px"}),
                                                 html.Button("Simuler", id="v2c-simulate", n_clicks=0, style={"marginLeft": "8px"}),
                                             ],
