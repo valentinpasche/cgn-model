@@ -9,12 +9,24 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from cgn_model.web_common.local_db import local_db
+
+
+_LOCAL_DB = local_db(
+    package="cgn_model.web_ui_v2",
+    template_name="ui_v2_template.db",
+    db_name="ui_v2.db",
+)
+
 
 def _db_path() -> Path:
-    root = Path(__file__).resolve().parents[1]
-    data_dir = root / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir / "ui_v2.db"
+    return _LOCAL_DB.path
+
+
+def db_path() -> Path:
+    """Retourne le chemin de la base SQLite utilisateur de l'UI V2."""
+
+    return _db_path()
 
 
 def _connect() -> sqlite3.Connection:
@@ -23,7 +35,7 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def init_db() -> None:
+def init_db() -> Path:
     schema_sql = """
     CREATE TABLE IF NOT EXISTS component_templates_v2 (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,6 +59,7 @@ def init_db() -> None:
     with _connect() as conn:
         conn.executescript(schema_sql)
         conn.commit()
+    return _db_path()
 
 
 def list_templates() -> list[dict[str, Any]]:
@@ -272,3 +285,6 @@ def delete_schema(schema_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM brick_schemas_v2 WHERE id = ?", (int(schema_id),))
         conn.commit()
+
+
+

@@ -5,7 +5,7 @@ Le `README.md` du dépôt reste destiné à l'installation rapide et aux command
 de lancement. Cette documentation explique plutôt comment utiliser, configurer
 et comprendre le modèle. Elle concerne principalement l'utilisation en mode
 script et le fonctionnement interne du modèle ; les interfaces graphiques sont
-traitées à part.
+traitées dans le [guide des interfaces graphiques](gui_guide.md).
 
 CGN-model est un package Python de simulation de chaîne énergétique pour bateau.
 Il permet de décrire un scénario dans un fichier YAML, de générer les profils
@@ -112,4 +112,5 @@ Pour une première prise en main :
 - Pour inspecter ou compléter les horaires : [navigation_guide.md](navigation_guide.md).
 - Pour comprendre un objet du code : [reference_modules_classes.md](reference_modules_classes.md).
 - Pour inspecter directement le solveur : [`examples/solver_dag_mode_260605/`](../examples/solver_dag_mode_260605/).
+- Pour lancer ou configurer les interfaces graphiques : [gui_guide.md](gui_guide.md).
 - Pour aller plus loin sur les choix d'architecture : [design_principles.md](design_principles.md).

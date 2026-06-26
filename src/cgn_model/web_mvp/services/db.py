@@ -9,6 +9,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from cgn_model.web_common.local_db import local_db
+
 
 @dataclass(frozen=True)
 class VesselConfigRow:
@@ -38,17 +40,23 @@ class ComponentTemplateRow:
     updated_at: str
 
 
-def _db_path() -> Path:
-    root = Path(__file__).resolve().parents[1]
-    data_dir = root / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir / "mvp.db"
+_LOCAL_DB = local_db(
+    package="cgn_model.web_mvp",
+    template_name="mvp_template.db",
+    db_name="mvp.db",
+)
 
-def _template_db_path() -> Path:
-    root = Path(__file__).resolve().parents[1]
-    data_dir = root / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir / "mvp_template.db"
+
+def _db_path() -> Path:
+    return _LOCAL_DB.path
+
+
+
+
+def db_path() -> Path:
+    """Retourne le chemin de la base SQLite utilisateur du MVP."""
+
+    return _db_path()
 
 
 def connect_db() -> sqlite3.Connection:
@@ -59,13 +67,6 @@ def connect_db() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     return conn
 
-def connect_template_db() -> sqlite3.Connection:
-    """
-    Ouvre une connexion vers la base template.
-    """
-    conn = sqlite3.connect(_template_db_path())
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def _schema_sql() -> str:
@@ -89,7 +90,7 @@ def _schema_sql() -> str:
     """
 
 
-def init_db() -> None:
+def init_db() -> Path:
     """
     Initialise le schema de base.
     """
@@ -97,9 +98,7 @@ def init_db() -> None:
     with connect_db() as conn:
         conn.executescript(sql)
         conn.commit()
-    with connect_template_db() as conn:
-        conn.executescript(sql)
-        conn.commit()
+    return _db_path()
 
 
 def list_vessel_configs() -> list[VesselConfigRow]:
@@ -386,3 +385,5 @@ def delete_component_template(template_id: int) -> None:
     with connect_db() as conn:
         conn.execute("DELETE FROM component_templates WHERE id = ?", (int(template_id),))
         conn.commit()
+
+

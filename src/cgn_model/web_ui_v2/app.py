@@ -23,7 +23,7 @@ from dash import Dash
 
 from cgn_model.web_ui_v2.callbacks import register_callbacks
 from cgn_model.web_ui_v2.layout import build_layout
-from cgn_model.web_ui_v2.services.storage import init_db
+from cgn_model.web_ui_v2.services.storage import db_path, init_db
 
 
 init_db()
@@ -66,9 +66,11 @@ def main():
 
     if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         print(f"Interface CGN disponible sur {url}", flush=True)
+        print(f"Base SQLite utilisee: {db_path()}", flush=True)
 
     app.run(debug=debug, host="127.0.0.1", port=8050)
 
 
 if __name__ == "__main__":
     main()
+

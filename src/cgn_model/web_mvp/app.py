@@ -1,12 +1,26 @@
-"""
-Application Dash MVP (squelette).
-"""
+"""Point d'entree interface web MVP."""
+#
+# Lancement:
+# - mode normal (stable): cgnmodel-mvp
+# - mode debug/dev:
+#   - PowerShell: $env:CGN_MVP_DEBUG='1'; cgnmodel-mvp
+#   - CMD: set CGN_MVP_DEBUG=1 && cgnmodel-mvp
+# - ouverture auto navigateur:
+#   - PowerShell: $env:CGN_MVP_OPEN_BROWSER='1'; cgnmodel-mvp
+#   - CMD: set CGN_MVP_OPEN_BROWSER=1 && cgnmodel-mvp
+# - reactiver les logs serveur en mode stable:
+#   - PowerShell: $env:CGN_MVP_QUIET='0'; cgnmodel-mvp
+#   - CMD: set CGN_MVP_QUIET=0 && cgnmodel-mvp
 
 from __future__ import annotations
 
+import logging
+import os
+import webbrowser
+
 from dash import Dash, dcc, html, page_container
 
-from cgn_model.web_mvp.services.db import init_db
+from cgn_model.web_mvp.services.db import db_path, init_db
 
 
 def build_app() -> Dash:
@@ -86,9 +100,40 @@ def build_app() -> Dash:
 app = build_app()
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def open_browser() -> None:
+    webbrowser.open_new("http://127.0.0.1:8050/")
+
+
 def main() -> None:
-    app.run(debug=True)
+    # Par defaut en mode stable (pas de hot-reload intempestif).
+    # Override possible: CGN_MVP_DEBUG=1
+    debug = _env_flag("CGN_MVP_DEBUG", default=False)
+    auto_open_browser = _env_flag("CGN_MVP_OPEN_BROWSER", default=False)
+    quiet = _env_flag("CGN_MVP_QUIET", default=not debug)
+    url = "http://127.0.0.1:8050/"
+
+    if quiet:
+        logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+    # Evite l'ouverture en double avec le reloader Flask/Werkzeug en mode debug.
+    if auto_open_browser and (not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
+        open_browser()
+
+    if not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        print(f"Interface CGN MVP disponible sur {url}", flush=True)
+        print(f"Base SQLite utilisee: {db_path()}", flush=True)
+
+    app.run(debug=debug, host="127.0.0.1", port=8050)
 
 
 if __name__ == "__main__":
     main()
+
+
