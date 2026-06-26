@@ -5,6 +5,7 @@ Onglet bibliotheque: configurations completes + templates composants.
 from __future__ import annotations
 
 import json
+from importlib import resources
 from pathlib import Path
 import re
 
@@ -43,7 +44,14 @@ def _load_docs_markdown() -> str:
     """
     try:
         root = Path(__file__).resolve().parents[4]
-        yaml_guide = (root / "docs" / "script_guide.md").read_text(encoding="utf-8")
+        guide_path = root / "docs" / "script_guide.md"
+        if guide_path.exists():
+            yaml_guide = guide_path.read_text(encoding="utf-8")
+        else:
+            yaml_guide = resources.files("cgn_model.web_mvp").joinpath(
+                "data", "script_guide_embedded.md"
+            ).read_text(encoding="utf-8")
+
         # Evite que des annotations de type comme `list[float]` soient lues comme des liens Markdown.
         yaml_guide = re.sub(
             r"\b([A-Za-z_][A-Za-z0-9_]*)\[([^\]\n]+)\](?!\()",
@@ -57,6 +65,7 @@ def _load_docs_markdown() -> str:
             "- `docs/script_guide.md`\n"
             "- `docs/navigation_guide.md`\n"
             "- `docs/example_script.md`\n\n"
+            "En installation standard, cette aide est une copie embarquee de `docs/script_guide.md`.\n\n"
             "---\n\n"
         )
         return intro + yaml_guide

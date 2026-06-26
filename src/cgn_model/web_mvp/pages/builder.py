@@ -218,7 +218,10 @@ layout = html.Div(
                 html.Div(
                     [
                         html.H4("Apercu Mermaid"),
-                        Mermaid(id="builder-mermaid-chart", chart="flowchart LR\n  a[no_data]"),
+                        html.Div(
+                            Mermaid(id="builder-mermaid-chart", chart="flowchart LR\n  a[no_data]"),
+                            className="cgn-mermaid-frame",
+                        ),
                         html.H4("Composants en cours", style={"marginTop": "12px"}),
                         html.Table(
                             [

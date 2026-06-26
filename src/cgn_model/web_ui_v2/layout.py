@@ -262,6 +262,7 @@ def build_layout():
                                                 )
                                             ],
                                             id="v2cfg-mermaid-container",
+                                            className="cgn-mermaid-frame",
                                             style={"minHeight": "360px"},
                                         ),
                                     ],

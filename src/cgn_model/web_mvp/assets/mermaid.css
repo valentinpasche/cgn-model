@@ -1,0 +1,39 @@
+.mermaid {
+  position: static !important;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.mermaid svg {
+  position: static !important;
+  max-width: 100%;
+  height: auto;
+  box-sizing: border-box;
+}
+
+.cgn-mermaid-frame {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-height: 220px;
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 8px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.cgn-mermaid-frame .mermaid,
+.cgn-mermaid-frame svg {
+  position: static !important;
+  display: block;
+  max-width: 100%;
+  height: auto;
+  box-sizing: border-box;
+}
+
+.cgn-mermaid-frame svg {
+  overflow: visible;
+}

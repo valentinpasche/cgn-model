@@ -260,7 +260,10 @@ def load_selected_yaml(selected_id: int | None):
 )
 def toggle_yaml_view(mode: str, yaml_text: str, mermaid_chart: str):
     if mode == "mermaid":
-        return Mermaid(id="sim-mermaid-chart", chart=mermaid_chart or "flowchart LR\n  a[no_data]")
+        return html.Div(
+            Mermaid(id="sim-mermaid-chart", chart=mermaid_chart or "flowchart LR\n  a[no_data]"),
+            className="cgn-mermaid-frame",
+        )
     return dcc.Textarea(
         id="sim-yaml",
         value=yaml_text or "",
