@@ -150,6 +150,7 @@ class PowerToPowerPolyAdapter(BaseModel):
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     target_sign: TargetSign = Field(
         title="Convention de signe vers la cible",
+        default="consume",
         description="consume: + => demande | inject: + => injection | as_is: signe conservé.",
         json_schema_extra={
             "repr_type": "SegmentedControl",
@@ -200,6 +201,7 @@ class SpeedToPowerPolyAdapter(BaseModel):
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     target_sign: TargetSign = Field(
         title="Convention de signe vers la cible",
+        default="consume",
         description="consume: + => demande | inject: + => injection | as_is: signe conserve.",
         json_schema_extra={
             "repr_type": "SegmentedControl",
@@ -290,6 +292,7 @@ class ForceAndSpeedToPowerAdapter(BaseModel):
     target: str = Field(title="Convertisseur de puissance cible", description="Nom/identifiant du convertisseur cible.")
     target_sign: TargetSign = Field(
         title="Convention de signe vers la cible",
+        default="consume",
         description="consume: + => demande | inject: + => injection | as_is: signe conserve.",
         json_schema_extra={
             "repr_type": "SegmentedControl",
